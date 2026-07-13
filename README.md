@@ -32,10 +32,12 @@ Instructions and steps go here.
 
 ## Installing
 
-Symlink or copy individual skill directories into `~/.claude/skills/` to make them available globally, or into a project's `.claude/skills/` to scope them to that repo:
+Run `./install.sh` to symlink every skill in this repo into `~/.claude/skills/` (and to install the personal setup files — see below). It's idempotent: safe to re-run after adding or updating a skill, and it backs up any real files it would overwrite.
+
+To scope a single skill to one project instead, symlink it directly into that project's `.claude/skills/`:
 
 ```bash
-ln -s ~/personal-claude-skills/some-skill ~/.claude/skills/some-skill
+ln -s ~/personal-claude-skills/some-skill some-project/.claude/skills/some-skill
 ```
 
 ## Adding a new skill
@@ -43,7 +45,20 @@ ln -s ~/personal-claude-skills/some-skill ~/.claude/skills/some-skill
 1. Create a new directory at the repo root named for the skill.
 2. Add a `SKILL.md` with frontmatter (`name`, `description`) and clear step-by-step instructions.
 3. Keep instructions focused — link out to `references/` for background material Claude only needs occasionally.
-4. Test it locally before committing (symlink into `~/.claude/skills/`, restart Claude Code, invoke it).
+4. Test it locally before committing (`./install.sh`, restart Claude Code, invoke it).
+
+## Personal setup (`claude-config/`)
+
+Alongside skills, this repo also holds my personal Claude Code setup — `CLAUDE.md`, `settings.json`, `statusline-command.sh` — under `claude-config/`, so a new device can be brought up to my configuration with one command:
+
+```bash
+git clone <this-repo> ~/personal-claude-skills
+~/personal-claude-skills/install.sh
+```
+
+`install.sh` symlinks these files into `~/.claude/`, so the repo stays the single source of truth — edits made live in `~/.claude/` (including via `/config` or by Claude itself) land directly in git. Machine-local files (`settings.local.json`, session/cache/history data) are intentionally excluded and stay real files outside the repo.
+
+This is distinct from a project-level `CLAUDE.md` for working on this repo itself, which may be added separately.
 
 ## License
 
