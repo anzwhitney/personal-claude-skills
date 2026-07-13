@@ -1,0 +1,10 @@
+{
+  "theme": "dark",
+  "model": "opusplan",
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$HOME/.claude/statusline-command.sh\""
+  },
+  "autoCompactEnabled": true,
+  "autoCompactWindow": 300000
+}
