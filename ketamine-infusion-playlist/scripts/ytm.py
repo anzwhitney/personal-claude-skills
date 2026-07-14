@@ -13,6 +13,7 @@ from typing import Any
 STATE_DIR = Path.home() / ".local" / "share" / "ketamine-playlist"
 AUTH_FILE = STATE_DIR / "browser.json"
 EXCLUDE_FILE = STATE_DIR / "exclude-playlists.json"
+EXCLUDE_TRACKS_FILE = STATE_DIR / "exclude-tracks.json"
 
 # The fixed 50-minute, 3-phase protocol. Seconds are the target length of
 # each phase; see references/phase-template.md for the full rationale.
@@ -79,6 +80,42 @@ def get_excluded_video_ids(client) -> set[str]:
             if vid:
                 excluded.add(vid)
     return excluded
+
+
+# --- Permanent per-track exclusion list (tracks banned regardless of playlist) ---
+# Sibling to the playlist exclude-list above, deliberately keyed by "videoId" (not
+# "id") so the two files' schemas stay visually distinguishable.
+
+def load_exclude_tracks() -> list[dict[str, str]]:
+    if not EXCLUDE_TRACKS_FILE.exists():
+        return []
+    return json.loads(EXCLUDE_TRACKS_FILE.read_text())
+
+
+def save_exclude_tracks(entries: list[dict[str, str]]) -> None:
+    ensure_state_dir()
+    EXCLUDE_TRACKS_FILE.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n")
+
+
+def add_to_exclude_tracks(video_id: str, name: str) -> list[dict[str, str]]:
+    entries = load_exclude_tracks()
+    if not any(e["videoId"] == video_id for e in entries):
+        entries.append({"videoId": video_id, "name": name})
+        save_exclude_tracks(entries)
+    return entries
+
+
+def get_excluded_track_video_ids() -> set[str]:
+    """videoIds from the permanent per-track exclude file. No network needed."""
+    return {e["videoId"] for e in load_exclude_tracks() if e.get("videoId")}
+
+
+def get_all_excluded_video_ids(client) -> set[str]:
+    """Union of (a) tracks in every excluded playlist and (b) the permanent
+    per-track exclude list. This is what playlist-building should check
+    against; get_excluded_video_ids() stays playlist-only for callers (like
+    --sync) that need to subtract out a specific playlist's own tracks."""
+    return get_excluded_video_ids(client) | get_excluded_track_video_ids()
 
 
 def resolve_track(client, query: str) -> dict[str, Any] | None:

@@ -23,6 +23,8 @@ override per-phase by adding a "target_seconds" key in the plan if needed.
 Usage:
     python3 build_playlist.py --list-playlists
     python3 build_playlist.py --add-exclude PLxxxx PLyyyy
+    python3 build_playlist.py --add-exclude-track "Artist - Title" [...]
+    python3 build_playlist.py --list-exclude-tracks
     python3 build_playlist.py --plan plan.json --dry-run
     python3 build_playlist.py --plan plan.json
 """
@@ -41,9 +43,11 @@ from ytm import (
     PHASES,
     TOTAL_TARGET_SECONDS,
     add_to_exclude_list,
+    add_to_exclude_tracks,
     format_mmss,
+    get_all_excluded_video_ids,
     get_client,
-    get_excluded_video_ids,
+    load_exclude_tracks,
     resolve_track,
 )
 
@@ -66,9 +70,26 @@ def cmd_add_exclude(client, playlist_ids: list[str]) -> int:
     return 0
 
 
+def cmd_add_exclude_track(client, queries: list[str]) -> int:
+    for q in queries:
+        track = resolve_track(client, q)
+        if track is None:
+            print(f"NOT FOUND (not added): {q!r}")
+            continue
+        name = f"{track['artist']} - {track['title']}"
+        add_to_exclude_tracks(track["videoId"], name)
+        print(f"Added to track exclude-list: {track['videoId']} ({name!r})")
+    return 0
+
+
+def cmd_list_exclude_tracks() -> int:
+    print(json.dumps(load_exclude_tracks(), indent=2, ensure_ascii=False))
+    return 0
+
+
 def build_timeline(client, plan: dict) -> tuple[list[dict], list[str]]:
     """Resolve every track in the plan. Returns (resolved_phases, issues)."""
-    excluded_ids = get_excluded_video_ids(client)
+    excluded_ids = get_all_excluded_video_ids(client)
     phase_targets = {p["name"]: p["target_seconds"] for p in PHASES}
 
     resolved_phases = []
@@ -181,12 +202,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--list-playlists", action="store_true", help="list library playlists as JSON, then exit")
     parser.add_argument("--add-exclude", nargs="+", metavar="PLAYLIST_ID", help="add playlist id(s) to the exclude-list, then exit")
+    parser.add_argument("--add-exclude-track", nargs="+", metavar="QUERY", help='resolve and permanently exclude track(s), e.g. "Artist - Title"')
+    parser.add_argument("--list-exclude-tracks", action="store_true", help="print the permanent track exclude-list, then exit")
     parser.add_argument("--plan", metavar="PLAN_JSON", help="path to a curated track plan (see module docstring)")
     parser.add_argument("--dry-run", action="store_true", help="resolve and print the timeline, but create nothing")
     args = parser.parse_args()
 
-    if not any([args.list_playlists, args.add_exclude, args.plan]):
-        parser.error("one of --list-playlists, --add-exclude, or --plan is required")
+    if not any([args.list_playlists, args.add_exclude, args.add_exclude_track, args.list_exclude_tracks, args.plan]):
+        parser.error(
+            "one of --list-playlists, --add-exclude, --add-exclude-track, "
+            "--list-exclude-tracks, or --plan is required"
+        )
 
     client = get_client()
 
@@ -194,6 +220,10 @@ def main() -> int:
         return cmd_list_playlists(client)
     if args.add_exclude:
         return cmd_add_exclude(client, args.add_exclude)
+    if args.add_exclude_track:
+        return cmd_add_exclude_track(client, args.add_exclude_track)
+    if args.list_exclude_tracks:
+        return cmd_list_exclude_tracks()
     return cmd_plan(client, args.plan, args.dry_run)
 
 
