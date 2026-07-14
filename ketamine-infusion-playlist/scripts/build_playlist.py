@@ -52,6 +52,13 @@ from ytm import (
 )
 
 
+BLOCKING_MARKERS = ("NOT FOUND", "ALREADY USED", "TOTAL", "STARTS AFTER 50:00")
+
+
+def blocking_issues(issues: list[str]) -> list[str]:
+    return [i for i in issues if any(m in i for m in BLOCKING_MARKERS)]
+
+
 def cmd_list_playlists(client) -> int:
     playlists = client.get_library_playlists(limit=None)
     print(json.dumps(
@@ -88,19 +95,28 @@ def cmd_list_exclude_tracks() -> int:
 
 
 def build_timeline(client, plan: dict) -> tuple[list[dict], list[str]]:
-    """Resolve every track in the plan. Returns (resolved_phases, issues)."""
+    """Resolve every track in the plan. Returns (resolved_phases, issues).
+
+    Each track gets a cumulative "start_seconds" (its position from the top
+    of the playlist, not just its own duration). The only hard timing rule
+    is that no track may *start* at/after TOTAL_TARGET_SECONDS (50:00) --
+    the playlist itself may run well past that, since the clinician fades
+    the music out around 50:00 regardless of what's queued after it.
+    """
     excluded_ids = get_all_excluded_video_ids(client)
     phase_targets = {p["name"]: p["target_seconds"] for p in PHASES}
 
     resolved_phases = []
     issues: list[str] = []
     artist_counts: dict[str, int] = {}
+    cumulative = 0
 
     for phase_plan in plan["phases"]:
         name = phase_plan["name"]
         if name not in phase_targets:
             issues.append(f"unknown phase name {name!r}; expected one of {list(phase_targets)}")
         target = phase_plan.get("target_seconds", phase_targets.get(name, 0))
+        phase_start = cumulative
 
         resolved_tracks = []
         prev_artist = None
@@ -122,18 +138,44 @@ def build_timeline(client, plan: dict) -> tuple[list[dict], list[str]]:
                     issues.append(f"artist {artist!r} exceeds cap of {MAX_TRACKS_PER_ARTIST} tracks/playlist")
             prev_artist = artist
 
+            if cumulative >= TOTAL_TARGET_SECONDS:
+                issues.append(
+                    f"[{name}] STARTS AFTER 50:00: {track['artist']} - {track['title']!r} "
+                    f"starts at {format_mmss(cumulative)}"
+                )
+
+            track["start_seconds"] = cumulative
             resolved_tracks.append(track)
+            cumulative += track["duration_seconds"] or 0
 
         phase_total = sum(t["duration_seconds"] or 0 for t in resolved_tracks)
-        if abs(phase_total - target) > PHASE_TOLERANCE_SECONDS:
+
+        if name == "Wind-down":
+            # Content past 50:00 is irrelevant to length (the clinician fades
+            # the music out around then), so only count the portion of this
+            # phase that falls before the 50:00 boundary -- and only flag a
+            # shortfall, never an overflow.
+            effective_total = max(0, min(phase_total, TOTAL_TARGET_SECONDS - phase_start))
+            if effective_total < target - PHASE_TOLERANCE_SECONDS:
+                issues.append(
+                    f"[{name}] duration {format_mmss(effective_total)} (before 50:00) is under target "
+                    f"{format_mmss(target)} by more than {PHASE_TOLERANCE_SECONDS}s"
+                )
+        elif abs(phase_total - target) > PHASE_TOLERANCE_SECONDS:
             issues.append(
                 f"[{name}] duration {format_mmss(phase_total)} is off target "
                 f"{format_mmss(target)} by more than {PHASE_TOLERANCE_SECONDS}s"
             )
 
-        resolved_phases.append({"name": name, "target_seconds": target, "tracks": resolved_tracks, "total_seconds": phase_total})
+        resolved_phases.append({
+            "name": name,
+            "target_seconds": target,
+            "tracks": resolved_tracks,
+            "total_seconds": phase_total,
+            "start_seconds": phase_start,
+        })
 
-    grand_total = sum(p["total_seconds"] for p in resolved_phases)
+    grand_total = cumulative
     if grand_total < TOTAL_TARGET_SECONDS:
         issues.append(
             f"TOTAL {format_mmss(grand_total)} is under the {format_mmss(TOTAL_TARGET_SECONDS)} minimum"
@@ -143,18 +185,18 @@ def build_timeline(client, plan: dict) -> tuple[list[dict], list[str]]:
 
 
 def print_timeline(resolved_phases: list[dict], issues: list[str]) -> None:
-    cumulative = 0
     print(f"{'Time':>8}  {'Phase':<10} Track")
     print("-" * 70)
+    total = 0
     for phase in resolved_phases:
         print(f"{'':>8}  {'--- ' + phase['name'] + ' ---':<10}"
               f" (target {format_mmss(phase['target_seconds'])}, actual {format_mmss(phase['total_seconds'])})")
         for track in phase["tracks"]:
-            print(f"{format_mmss(cumulative):>8}  {phase['name']:<10} {track['artist']} - {track['title']}"
+            print(f"{format_mmss(track['start_seconds']):>8}  {phase['name']:<10} {track['artist']} - {track['title']}"
                   f"  [{format_mmss(track['duration_seconds'])}]")
-            cumulative += track["duration_seconds"] or 0
+            total = track["start_seconds"] + (track["duration_seconds"] or 0)
     print("-" * 70)
-    print(f"{format_mmss(cumulative):>8}  TOTAL")
+    print(f"{format_mmss(total):>8}  TOTAL")
 
     if issues:
         print(f"\n{len(issues)} issue(s):")
@@ -169,7 +211,7 @@ def cmd_plan(client, plan_path: str, dry_run: bool) -> int:
     resolved_phases, issues = build_timeline(client, plan)
     print_timeline(resolved_phases, issues)
 
-    blocking = [i for i in issues if "NOT FOUND" in i or "ALREADY USED" in i or "TOTAL" in i]
+    blocking = blocking_issues(issues)
     if blocking:
         print("\nBlocking issues present (missing/reused tracks, or under 50:00). "
               "Revise the plan and re-run before creating." if not dry_run else
