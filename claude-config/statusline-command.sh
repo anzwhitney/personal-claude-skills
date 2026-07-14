@@ -5,6 +5,10 @@
 
 input=$(cat)
 
+# --- Current directory ---------------------------------------------------
+cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
+cwd="${cwd/#$HOME/\~}"
+
 # --- Model -------------------------------------------------------------
 model=$(echo "$input" | jq -r '.model.display_name // "?"')
 
@@ -57,4 +61,8 @@ if [ -n "$used_tokens" ] && [ -n "$compact_window" ] && [ "$compact_window" != "
 fi
 
 # --- Compose (dim colors for terminal readability) ----------------------
-printf '\033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m' "$model" "$usage"
+if [ -n "$cwd" ]; then
+  printf '\033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m' "$cwd" "$model" "$usage"
+else
+  printf '\033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m' "$model" "$usage"
+fi

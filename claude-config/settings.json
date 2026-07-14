@@ -1,10 +1,15 @@
 {
   "theme": "dark",
   "model": "opusplan",
+  "effortLevel": "medium",
   "statusLine": {
     "type": "command",
     "command": "bash \"$HOME/.claude/statusline-command.sh\""
   },
   "autoCompactEnabled": true,
-  "autoCompactWindow": 300000
+  "autoCompactWindow": 300000,
+  "env": {
+    "EDITOR": "vim",
+    "VISUAL": "vim"
+  }
 }
