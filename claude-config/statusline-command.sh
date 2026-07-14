@@ -5,9 +5,21 @@
 
 input=$(cat)
 
-# --- Current directory ---------------------------------------------------
-cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
-cwd="${cwd/#$HOME/\~}"
+# --- Current directory / repo ---------------------------------------------
+raw_dir=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
+cwd="${raw_dir/#$HOME/\~}"
+
+# If we're inside a git repo, show "repo ⎇ branch" instead of the raw path.
+if [ -n "$raw_dir" ] && git -C "$raw_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  repo=$(basename "$(git -C "$raw_dir" rev-parse --show-toplevel 2>/dev/null)")
+  branch=$(git -C "$raw_dir" branch --show-current 2>/dev/null)
+  if [ -z "$branch" ]; then
+    branch=$(git -C "$raw_dir" rev-parse --short HEAD 2>/dev/null)
+  fi
+  location="$repo ⎇ $branch"
+else
+  location="$cwd"
+fi
 
 # --- Model -------------------------------------------------------------
 model=$(echo "$input" | jq -r '.model.display_name // "?"')
@@ -61,8 +73,8 @@ if [ -n "$used_tokens" ] && [ -n "$compact_window" ] && [ "$compact_window" != "
 fi
 
 # --- Compose (dim colors for terminal readability) ----------------------
-if [ -n "$cwd" ]; then
-  printf '\033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m' "$cwd" "$model" "$usage"
+if [ -n "$location" ]; then
+  printf '\033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m' "$model" "$usage" "$location"
 else
   printf '\033[2m%s\033[0m \033[2m|\033[0m \033[2m%s\033[0m' "$model" "$usage"
 fi
