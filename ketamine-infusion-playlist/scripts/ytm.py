@@ -181,30 +181,46 @@ def is_likely_vocal_title(track: dict[str, Any]) -> bool:
     return track.get("matched_filter") == "videos"
 
 
-def resolve_track(client, query: str) -> dict[str, Any] | None:
-    """Resolve a free-text 'Artist - Title' query to a concrete track.
+def resolve_candidates(client, query: str, limit: int = 5) -> list[dict[str, Any]]:
+    """Resolve a free-text 'Artist - Title' query to up to `limit` candidate
+    tracks, for disambiguating between versions/edits/covers before
+    committing a query to a plan (search results are fuzzy and the top hit
+    isn't always the intended one -- see search_tracks.py -n).
 
-    Tries the "songs" filter first, falls back to "videos" (some tracks are
-    only catalogued as videos on YouTube Music). Returns None if nothing
-    reasonable comes back.
+    Tries the "songs" filter first, falls back to "videos" only if that comes
+    up completely empty (some tracks are only catalogued as videos on
+    YouTube Music). De-duplicates by videoId.
     """
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for filt in ("songs", "videos"):
         try:
-            results = client.search(query, filter=filt, limit=5)
+            results = client.search(query, filter=filt, limit=limit)
         except Exception:  # noqa: BLE001
             results = []
-        if results:
-            top = results[0]
-            artists = top.get("artists") or []
-            return {
+        for r in results:
+            vid = r.get("videoId")
+            if not vid or vid in seen:
+                continue
+            seen.add(vid)
+            artists = r.get("artists") or []
+            candidates.append({
                 "query": query,
-                "videoId": top.get("videoId"),
-                "title": top.get("title"),
+                "videoId": vid,
+                "title": r.get("title"),
                 "artist": artists[0]["name"] if artists else "Unknown",
-                "duration_seconds": top.get("duration_seconds"),
+                "duration_seconds": r.get("duration_seconds"),
                 "matched_filter": filt,
-            }
-    return None
+            })
+        if candidates:
+            break
+    return candidates[:limit]
+
+
+def resolve_track(client, query: str) -> dict[str, Any] | None:
+    """Resolve a free-text 'Artist - Title' query to its single best-match track."""
+    candidates = resolve_candidates(client, query, limit=1)
+    return candidates[0] if candidates else None
 
 
 def format_mmss(seconds: int) -> str:
