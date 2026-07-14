@@ -1,7 +1,10 @@
-# Runtime state (auth headers, exclude-list, venv) lives outside this repo
-# under ~/.local/share/ketamine-playlist/, but ignore these here too in case
-# anything ever gets created locally by mistake.
+# Runtime state (auth headers, exclude-lists, lyrics cache, venv) lives
+# outside this repo under ~/.local/share/ketamine-playlist/ and
+# ~/.local/share/yt-music-playlist/, but ignore these here too in case
+# anything ever gets created locally by mistake. protocol.json is this
+# skill's own tracked config, not runtime state -- explicitly un-ignored.
 venv/
 *.json
+!protocol.json
 __pycache__/
 *.pyc
