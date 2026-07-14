@@ -65,6 +65,13 @@ def add_to_exclude_list(playlist_id: str, name: str) -> list[dict[str, str]]:
     return entries
 
 
+def remove_from_exclude_list(playlist_ids: list[str]) -> list[dict[str, str]]:
+    ids = set(playlist_ids)
+    entries = [e for e in load_exclude_list() if e["id"] not in ids]
+    save_exclude_list(entries)
+    return entries
+
+
 def get_excluded_video_ids(client) -> set[str]:
     """Union the videoIds of every playlist in the exclude-list, fetched live."""
     excluded: set[str] = set()
