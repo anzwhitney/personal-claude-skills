@@ -14,16 +14,17 @@ hold the full character description per phase and notes from prior sessions.
 This skill is a thin layer of curation policy on top of the generic **`yt-music-playlist`**
 skill, which does all the mechanical work (auth, track search/resolution, timeline validation,
 playlist create/show/sync/finalize). This skill contributes no code of its own — only
-`protocol.json` (the fixed phase/diversity/vocal-policy config) and the curation reference docs
-below. Every command in this workflow invokes the shared skill's `build_playlist.py` with
-`--protocol protocol.json` and this skill's own `--exclude-dir`.
+`protocol.json` (the fixed phase/diversity/vocal-policy/exclude-dir config) and the curation
+reference docs below. Every command in this workflow invokes the shared skill's
+`build_playlist.py` with `--protocol protocol.json`; the exclude-dir for no-reuse tracking
+(`~/.local/share/ketamine-playlist`) comes from `protocol.json`'s own `exclude_dir` field, so it
+never needs to be passed separately.
 
 Define these once per session:
 ```
 PY=~/.local/share/yt-music-playlist/venv/bin/python3
 ENGINE=~/.claude/skills/yt-music-playlist/scripts/build_playlist.py
 KTM=~/.claude/skills/ketamine-infusion-playlist
-EXCLUDE_DIR=~/.local/share/ketamine-playlist
 ```
 If the shared venv doesn't exist yet, create it and install the shared skill's
 `requirements.txt` first (see `yt-music-playlist`'s `references/ytmusicapi-guide.md`).
@@ -47,16 +48,17 @@ If the shared venv doesn't exist yet, create it and install the shared skill's
    stale. (Auth is account-level and shared with any other playlist skill built on
    `yt-music-playlist`.)
 
-2. **Seed the playlist exclude-list (first run only).** If `$EXCLUDE_DIR/exclude-playlists.json`
-   doesn't exist yet, run `$PY $ENGINE --list-playlists`, show the user their library playlists,
-   and ask which ones (if any) are prior ketamine-session playlists whose tracks should never be
-   reused. Add the chosen ones with `$PY $ENGINE --exclude-dir $EXCLUDE_DIR --add-exclude ID
-   [ID ...]`. Skip this step on later runs — the exclude-list persists. (`--remove-exclude ID
-   [...]` undoes a mistaken add.)
+2. **Seed the playlist exclude-list (first run only).** If
+   `~/.local/share/ketamine-playlist/exclude-playlists.json` doesn't exist yet, run
+   `$PY $ENGINE --list-playlists`, show the user their library playlists, and ask which ones (if
+   any) are prior ketamine-session playlists whose tracks should never be reused. Add the chosen
+   ones with `$PY $ENGINE --protocol $KTM/protocol.json --add-exclude ID [ID ...]`. Skip this
+   step on later runs — the exclude-list persists. (`--remove-exclude ID [...]` undoes a
+   mistaken add.)
 
 3. **Manage the permanent track exclude-list.** Separately from playlists, individual tracks
    the user dislikes or that don't fit in practice can be permanently banned regardless of
-   which playlist they'd come from. `$PY $ENGINE --exclude-dir $EXCLUDE_DIR
+   which playlist they'd come from. `$PY $ENGINE --protocol $KTM/protocol.json
    --list-exclude-tracks` shows the current list; `--add-exclude-track "Artist - Title" [...]`
    adds to it. If the user mentions a track they don't want to hear again, add it here rather
    than noting it in prose.
@@ -86,8 +88,8 @@ If the shared venv doesn't exist yet, create it and install the shared skill's
    `vocal_ok` is optional — a list of queries to manually clear if the automated vocal check
    flags a verified false positive.
 
-5. **Dry-run.** Run `$PY $ENGINE --protocol $KTM/protocol.json --exclude-dir $EXCLUDE_DIR --plan
-   /tmp/ktm-plan.json --dry-run`. It resolves every track via ytmusicapi search; drops any not
+5. **Dry-run.** Run `$PY $ENGINE --protocol $KTM/protocol.json --plan /tmp/ktm-plan.json
+   --dry-run`. It resolves every track via ytmusicapi search; drops any not
    found or already used (by playlist or by the permanent track exclude-list); flags diversity,
    timing, and instrumental-rule issues (all per `protocol.json`); and prints a full timeline
    with cumulative start times. Nothing is created yet. The instrumental check makes real
@@ -109,15 +111,15 @@ If the shared venv doesn't exist yet, create it and install the shared skill's
    (including `setVideoId`, needed for editing), run `$PY $ENGINE --show PLAYLIST_ID`.
 
 9. **Sync edits.** If the user wants changes, edit the plan file and run
-   `$PY $ENGINE --protocol $KTM/protocol.json --exclude-dir $EXCLUDE_DIR --sync PLAYLIST_ID
-   --plan plan.json --dry-run` to preview, then without `--dry-run` to apply. This reconciles
-   the live playlist to the plan (full remove-and-re-add in plan order) without treating the
-   playlist's own current tracks as already-used. Repeat steps 8-9 as needed.
+   `$PY $ENGINE --protocol $KTM/protocol.json --sync PLAYLIST_ID --plan plan.json --dry-run` to
+   preview, then without `--dry-run` to apply. This reconciles the live playlist to the plan
+   (full remove-and-re-add in plan order) without treating the playlist's own current tracks as
+   already-used. Repeat steps 8-9 as needed.
 
 10. **Finalize.** Once the user explicitly confirms the playlist is done, run
-    `$PY $ENGINE --exclude-dir $EXCLUDE_DIR --finalize PLAYLIST_ID`. This is the only step that
-    records the playlist in the exclude-list so its tracks aren't reused in a future session. Do
-    not finalize on the user's behalf just because a create or sync succeeded.
+    `$PY $ENGINE --protocol $KTM/protocol.json --finalize PLAYLIST_ID`. This is the only step
+    that records the playlist in the exclude-list so its tracks aren't reused in a future
+    session. Do not finalize on the user's behalf just because a create or sync succeeded.
 
 11. **Optional follow-up.** If the user mentions standout tracks or things that didn't work
     after a session, append a short note to `references/curation-notes.md` for next time (and

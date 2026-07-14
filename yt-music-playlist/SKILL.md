@@ -84,8 +84,12 @@ ketamine-infusion-playlist always uses this, so it never repeats a track from a 
 
 To opt in, pick (or have the consuming skill fix) a directory to hold this playlist's no-reuse
 state — `exclude-playlists.json` (prior playlists whose tracks should never be reused) and
-`exclude-tracks.json` (individually banned tracks) — and pass it as `--exclude-dir DIR` to every
-command in the workflow above (steps 3, 5, 7). With `--exclude-dir` set:
+`exclude-tracks.json` (individually banned tracks). Either pass it as `--exclude-dir DIR` to
+every command in the workflow above (steps 3, 5, 7), or — for a consuming skill that always
+wants this on — bake it into that skill's `--protocol` config as `"exclude_dir"` so it never has
+to pass `--exclude-dir` itself (see `references/ytmusicapi-guide.md`); `--exclude-dir` on the
+command line overrides a protocol's value if both are given. With an exclude-dir in effect,
+from either source:
 
 - **Seed the playlist exclude-list (first run only).** If `exclude-playlists.json` doesn't
   exist yet in that dir, run `scripts/build_playlist.py --list-playlists`, show the user their
