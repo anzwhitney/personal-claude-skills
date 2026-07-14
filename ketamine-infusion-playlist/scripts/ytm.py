@@ -118,6 +118,62 @@ def get_all_excluded_video_ids(client) -> set[str]:
     return get_excluded_video_ids(client) | get_excluded_track_video_ids()
 
 
+# --- Instrumental-only enforcement ---
+# Every track must be fully instrumental, except possibly a single final track
+# that starts at/after VOCAL_EXCEPTION_START_SECONDS. Detection combines a hard
+# lyrics-text signal (check_vocals) with a soft title heuristic
+# (is_likely_vocal_title) -- per explicit user instruction, any confirmed
+# lyrics is a hard block, "feat."-style titles are a flag, and a little extra
+# slowness at creation time is worth it to avoid unexpected vocals mid-infusion.
+VOCAL_EXCEPTION_START_SECONDS = 47 * 60  # 2820s
+VOCAL_TITLE_MARKERS = ("feat.", "ft.", "featuring", "(feat", "(ft")
+LYRICS_CACHE_FILE = STATE_DIR / "lyrics-cache.json"
+
+
+def load_lyrics_cache() -> dict[str, bool]:
+    if not LYRICS_CACHE_FILE.exists():
+        return {}
+    return json.loads(LYRICS_CACHE_FILE.read_text())
+
+
+def save_lyrics_cache(cache: dict[str, bool]) -> None:
+    ensure_state_dir()
+    LYRICS_CACHE_FILE.write_text(json.dumps(cache, indent=2, ensure_ascii=False) + "\n")
+
+
+def check_vocals(client, video_id: str) -> bool | None:
+    """True = confirmed lyrics text found, False = confirmed none available,
+    None = lookup failed/inconclusive. Only True/False are cached -- a failed
+    lookup is retried on the next run rather than silently treated as safe."""
+    cache = load_lyrics_cache()
+    if video_id in cache:
+        return cache[video_id]
+    try:
+        watch = client.get_watch_playlist(videoId=video_id)
+        browse_id = (watch or {}).get("lyrics")
+        if not browse_id:
+            result = False
+        else:
+            lyrics = client.get_lyrics(browse_id)
+            text = (lyrics or {}).get("lyrics")
+            result = bool(text and text.strip())
+    except Exception:  # noqa: BLE001 - inconclusive, not a confirmed non-match
+        return None
+    cache[video_id] = result
+    save_lyrics_cache(cache)
+    return result
+
+
+def is_likely_vocal_title(track: dict[str, Any]) -> bool:
+    """Cheap title-based heuristic, OR'd alongside check_vocals()."""
+    title = (track.get("title") or "").lower()
+    if any(marker in title for marker in VOCAL_TITLE_MARKERS):
+        return True
+    # Tracks only catalogued as a "video" (not a "song") skew more often
+    # toward non-instrumental content on YouTube Music -- weak signal.
+    return track.get("matched_filter") == "videos"
+
+
 def resolve_track(client, query: str) -> dict[str, Any] | None:
     """Resolve a free-text 'Artist - Title' query to a concrete track.
 

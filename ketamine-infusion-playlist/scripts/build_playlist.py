@@ -26,7 +26,13 @@ Usage:
     python3 build_playlist.py --add-exclude-track "Artist - Title" [...]
     python3 build_playlist.py --list-exclude-tracks
     python3 build_playlist.py --plan plan.json --dry-run
+    python3 build_playlist.py --plan plan.json --dry-run --no-lyrics-check
     python3 build_playlist.py --plan plan.json
+
+Every track must be fully instrumental (no lyrics), except possibly a single
+final track that starts at/after the 47:00 mark -- see VOCAL_EXCEPTION_START_SECONDS
+in ytm.py. A plan may include a top-level "vocal_ok": ["query", ...] list to
+manually clear a query that the heuristics flag as a false positive.
 """
 from __future__ import annotations
 
@@ -42,17 +48,20 @@ from ytm import (
     PHASE_TOLERANCE_SECONDS,
     PHASES,
     TOTAL_TARGET_SECONDS,
+    VOCAL_EXCEPTION_START_SECONDS,
     add_to_exclude_list,
     add_to_exclude_tracks,
+    check_vocals,
     format_mmss,
     get_all_excluded_video_ids,
     get_client,
+    is_likely_vocal_title,
     load_exclude_tracks,
     resolve_track,
 )
 
 
-BLOCKING_MARKERS = ("NOT FOUND", "ALREADY USED", "TOTAL", "STARTS AFTER 50:00")
+BLOCKING_MARKERS = ("NOT FOUND", "ALREADY USED", "TOTAL", "STARTS AFTER 50:00", "HAS VOCALS")
 
 
 def blocking_issues(issues: list[str]) -> list[str]:
@@ -94,7 +103,50 @@ def cmd_list_exclude_tracks() -> int:
     return 0
 
 
-def build_timeline(client, plan: dict) -> tuple[list[dict], list[str]]:
+def _apply_vocal_checks(
+    client,
+    resolved_phases: list[dict],
+    issues: list[str],
+    check_lyrics: bool,
+    vocal_ok_queries: set[str],
+) -> None:
+    """Enforce the instrumental-only rule across the whole resolved playlist.
+
+    Every track must be vocal-free, except possibly the single final track in
+    the playlist if it starts at/after VOCAL_EXCEPTION_START_SECONDS (47:00).
+    A plan may mark a query in a top-level "vocal_ok" list to manually
+    downgrade a confirmed-lyrics block to advisory (verified false positive).
+    """
+    all_tracks = [(phase, track) for phase in resolved_phases for track in phase["tracks"]]
+    if not all_tracks:
+        return
+    last_track = all_tracks[-1][1]
+
+    for phase, track in all_tracks:
+        label = f"{track['artist']} - {track['title']!r} at {format_mmss(track['start_seconds'])}"
+        override = track.get("query") in vocal_ok_queries
+        allowed_vocal_slot = (
+            track is last_track and (track["start_seconds"] or 0) >= VOCAL_EXCEPTION_START_SECONDS
+        )
+
+        has_lyrics = check_vocals(client, track["videoId"]) if check_lyrics and track["videoId"] else None
+
+        if has_lyrics is True:
+            if override:
+                issues.append(f"[{phase['name']}] vocal_ok override (confirmed lyrics ignored): {label}")
+            elif allowed_vocal_slot:
+                issues.append(f"[{phase['name']}] vocal closer (allowed, starts >= 47:00): {label}")
+            else:
+                issues.append(f"[{phase['name']}] HAS VOCALS (instrumental rule): {label}")
+        elif has_lyrics is None and check_lyrics:
+            issues.append(f"[{phase['name']}] could not verify lyrics (advisory): {label}")
+
+        if is_likely_vocal_title(track) and has_lyrics is not True and not override:
+            note = "likely vocal (title)" if allowed_vocal_slot else "likely vocal (title) -- verify before use"
+            issues.append(f"[{phase['name']}] {note}: {label}")
+
+
+def build_timeline(client, plan: dict, check_lyrics: bool = True) -> tuple[list[dict], list[str]]:
     """Resolve every track in the plan. Returns (resolved_phases, issues).
 
     Each track gets a cumulative "start_seconds" (its position from the top
@@ -181,6 +233,9 @@ def build_timeline(client, plan: dict) -> tuple[list[dict], list[str]]:
             f"TOTAL {format_mmss(grand_total)} is under the {format_mmss(TOTAL_TARGET_SECONDS)} minimum"
         )
 
+    vocal_ok_queries = set(plan.get("vocal_ok", []))
+    _apply_vocal_checks(client, resolved_phases, issues, check_lyrics, vocal_ok_queries)
+
     return resolved_phases, issues
 
 
@@ -206,14 +261,14 @@ def print_timeline(resolved_phases: list[dict], issues: list[str]) -> None:
         print("\nNo issues.")
 
 
-def cmd_plan(client, plan_path: str, dry_run: bool) -> int:
+def cmd_plan(client, plan_path: str, dry_run: bool, check_lyrics: bool = True) -> int:
     plan = json.loads(Path(plan_path).read_text())
-    resolved_phases, issues = build_timeline(client, plan)
+    resolved_phases, issues = build_timeline(client, plan, check_lyrics=check_lyrics)
     print_timeline(resolved_phases, issues)
 
     blocking = blocking_issues(issues)
     if blocking:
-        print("\nBlocking issues present (missing/reused tracks, or under 50:00). "
+        print("\nBlocking issues present (missing/reused/vocal tracks, timing violations). "
               "Revise the plan and re-run before creating." if not dry_run else
               "\n(Dry run only shown above; resolve blocking issues before a live create.)")
         if not dry_run:
@@ -248,6 +303,7 @@ def main() -> int:
     parser.add_argument("--list-exclude-tracks", action="store_true", help="print the permanent track exclude-list, then exit")
     parser.add_argument("--plan", metavar="PLAN_JSON", help="path to a curated track plan (see module docstring)")
     parser.add_argument("--dry-run", action="store_true", help="resolve and print the timeline, but create nothing")
+    parser.add_argument("--no-lyrics-check", action="store_true", help="skip network lyrics lookups (title heuristic still runs); use for fast timing-only iteration")
     args = parser.parse_args()
 
     if not any([args.list_playlists, args.add_exclude, args.add_exclude_track, args.list_exclude_tracks, args.plan]):
@@ -266,7 +322,7 @@ def main() -> int:
         return cmd_add_exclude_track(client, args.add_exclude_track)
     if args.list_exclude_tracks:
         return cmd_list_exclude_tracks()
-    return cmd_plan(client, args.plan, args.dry_run)
+    return cmd_plan(client, args.plan, args.dry_run, check_lyrics=not args.no_lyrics_check)
 
 
 if __name__ == "__main__":
