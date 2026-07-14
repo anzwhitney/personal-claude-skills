@@ -13,6 +13,4 @@
 - Don't keep retrying an unavailable service or tool expecting it to come back shortly. After about 2 failures, pause and give me options for how to proceed (e.g. if the auto-mode classifier is down, ask whether to switch to manual).
 
 # Starting a coding task
-- Start each new coding task in a fresh worktree of the repo, on a new branch with a descriptive name.
-- Exception: if the current checkout is already a non-main branch whose name and history imply the new task continues that existing work, keep working there instead.
-- Exception: for changes to files that are live-symlinked from the main checkout (e.g. this Claude config repo, symlinked from ~/.claude), work in-place on a new branch in the main checkout instead of a worktree — a worktree's copies wouldn't be live or testable. First confirm the main checkout is on `main`, to avoid clobbering another agent's in-progress work.
+- Start each new coding task in a fresh worktree of the repo, on a new branch with a descriptive name — unless the current checkout is already a non-main branch whose name and history imply the new task continues that existing work, in which case keep working there.
