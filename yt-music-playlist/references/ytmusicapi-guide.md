@@ -19,9 +19,8 @@ Run every script through that venv's python, e.g.:
 ```
 
 This venv and the auth/lyrics-cache below are shared by every skill built on top of this one
-(auth is account-level, not specific to any one playlist protocol). Per-protocol state — the
-exclude-lists of playlists/tracks not to reuse — lives separately per consumer; see
-`--exclude-dir` below.
+(auth is account-level, not specific to any one playlist protocol). No-reuse tracking is opt-in
+and per-consumer when used; see `--exclude-dir` below.
 
 ## Auth (browser-headers method)
 
@@ -75,15 +74,24 @@ yt = YTMusic("~/.local/share/yt-music-playlist/browser.json")
   command (no destructive playlist-deletion feature exists here); only ever called ad hoc to
   clean up a throwaway test playlist during development.
 
-## Exclude-lists (`--exclude-dir`)
+## Exclude-lists (`--exclude-dir`, opt-in)
 
-No-reuse tracking (which playlists' and individual tracks' videoIds should never be added
-again) is per-consumer, not global — each skill built on this engine passes its own
-`--exclude-dir DIR`, which holds two files: `exclude-playlists.json` (`{"id", "name"}` entries,
-managed by `--add-exclude`/`--remove-exclude`/`--finalize`) and `exclude-tracks.json`
-(`{"videoId", "name"}` entries, managed by `--add-exclude-track`/`--list-exclude-tracks`).
+By default `build_playlist.py` has no memory of past playlists — every `--plan`/`--sync` run is
+independent, and nothing is checked against or added to any exclude-list. No-reuse tracking
+(which playlists' and individual tracks' videoIds should never be added again) only activates
+when a `--exclude-dir DIR` is passed, and is per-consumer, not global: each skill built on this
+engine (or an ad hoc request that wants it) picks its own dir, which holds two files:
+`exclude-playlists.json` (`{"id", "name"}` entries, managed by
+`--add-exclude`/`--remove-exclude`/`--finalize`) and `exclude-tracks.json` (`{"videoId", "name"}`
+entries, managed by `--add-exclude-track`/`--list-exclude-tracks`).
 `ytm.get_all_excluded_video_ids(client, exclude_dir)` unions both, fetching each excluded
-playlist's current contents live.
+playlist's current contents live. Without `--exclude-dir`, `--plan`/`--sync` skip this check
+entirely (empty exclude set) and `--finalize`/`--add-exclude`/etc. are simply unavailable
+(they error if invoked without one, since there'd be nowhere to write).
+
+A `--protocol` can rely on this always being turned on for its consumer (e.g.
+ketamine-infusion-playlist always passes its own fixed `--exclude-dir`) — that's a convention
+the consuming skill's own SKILL.md establishes, not something `protocol.json` itself declares.
 
 ## Protocol config (`--protocol`)
 

@@ -4,8 +4,8 @@ YouTube Music playlist.
 
 This script does NOT choose tracks -- that's done by Claude during curation.
 Its job is mechanical: resolve queries to real tracks, enforce whatever
-protocol rules apply (segment timing, artist diversity, vocal policy,
-no-reuse), report a timeline, and create/sync the playlist once approved.
+protocol rules apply (segment timing, artist diversity, vocal policy),
+report a timeline, and create/sync the playlist once approved.
 
 All protocol-specific policy (segment names + targets, tolerance, artist
 diversity caps, vocal-detection mode, total-length boundary) comes from an
@@ -13,6 +13,13 @@ optional --protocol JSON config -- see references/ytmusicapi-guide.md for
 the schema. Without --protocol, the plan is built as an unconstrained flat
 playlist: any phase/segment names are accepted, no timing or diversity
 checks run, and vocal detection is off.
+
+No-reuse tracking (never adding a track already used in a prior playlist,
+or one permanently banned) is opt-in, via --exclude-dir -- omit it for a
+one-off playlist with no such tracking. Pass it when the user asks not to
+repeat tracks across playlists, or when a --protocol calls for it (e.g.
+ketamine-infusion-playlist always uses one). See "Exclude-lists" in
+references/ytmusicapi-guide.md.
 
 Plan file format (JSON):
 {
@@ -31,22 +38,24 @@ segment.
 
 Usage:
     python3 build_playlist.py --list-playlists
+    python3 build_playlist.py --protocol protocol.json --plan plan.json --dry-run
+    python3 build_playlist.py --protocol protocol.json --plan plan.json --dry-run --no-lyrics-check
+    python3 build_playlist.py --protocol protocol.json --plan plan.json
+    python3 build_playlist.py --show PLxxxx
+    python3 build_playlist.py --protocol protocol.json --sync PLxxxx --plan plan.json --dry-run
+    python3 build_playlist.py --protocol protocol.json --sync PLxxxx --plan plan.json
+
+    # Opt-in no-reuse tracking (add --exclude-dir DIR to any of the above too):
     python3 build_playlist.py --exclude-dir DIR --add-exclude PLxxxx PLyyyy
     python3 build_playlist.py --exclude-dir DIR --remove-exclude PLxxxx
     python3 build_playlist.py --exclude-dir DIR --add-exclude-track "Artist - Title" [...]
     python3 build_playlist.py --exclude-dir DIR --list-exclude-tracks
-    python3 build_playlist.py --exclude-dir DIR --protocol protocol.json --plan plan.json --dry-run
-    python3 build_playlist.py --exclude-dir DIR --protocol protocol.json --plan plan.json --dry-run --no-lyrics-check
-    python3 build_playlist.py --exclude-dir DIR --protocol protocol.json --plan plan.json
-    python3 build_playlist.py --show PLxxxx
-    python3 build_playlist.py --exclude-dir DIR --protocol protocol.json --sync PLxxxx --plan plan.json --dry-run
-    python3 build_playlist.py --exclude-dir DIR --protocol protocol.json --sync PLxxxx --plan plan.json
     python3 build_playlist.py --exclude-dir DIR --finalize PLxxxx
 
 A successful --plan create does NOT mean the playlist is done -- listen to it
-first. It is deliberately left out of the exclude-list until you run
---finalize on it. Use --show to inspect a live playlist and --sync to
-reconcile it to an edited plan.json in the meantime.
+first. If using --exclude-dir, the playlist is deliberately left out of the
+exclude-list until you run --finalize on it. Use --show to inspect a live
+playlist and --sync to reconcile it to an edited plan.json in the meantime.
 """
 from __future__ import annotations
 
@@ -235,13 +244,14 @@ def build_timeline(
     hard "no track may start at/after this" boundary; content past it is
     otherwise unconstrained.
 
-    excluded_ids defaults to every excluded playlist/track, fetched live; pass
-    it explicitly (e.g. with a playlist's own tracks subtracted out) when
-    validating an edit to a playlist that is itself already excluded, as
-    --sync does.
+    excluded_ids defaults to every excluded playlist/track under exclude_dir,
+    fetched live, or an empty set if exclude_dir is None (no-reuse tracking is
+    opt-in). Pass excluded_ids explicitly (e.g. with a playlist's own tracks
+    subtracted out) when validating an edit to a playlist that is itself
+    already excluded, as --sync does.
     """
     if excluded_ids is None:
-        excluded_ids = get_all_excluded_video_ids(client, exclude_dir)
+        excluded_ids = get_all_excluded_video_ids(client, exclude_dir) if exclude_dir else set()
     segments = protocol.get("segments") or []
     has_fixed_segments = bool(segments)
     segment_configs = {s["name"]: s for s in segments}
@@ -392,14 +402,17 @@ def cmd_plan(client, plan_path: str, protocol: dict, exclude_dir: str | None, dr
     print(f"\nCreated playlist: {title}")
     print(f"URL: https://music.youtube.com/playlist?list={playlist_id}")
     print(f"({len(all_video_ids)} tracks added.)")
-    print(
-        "\nNOT yet finalized -- its tracks can still be reused elsewhere and it "
-        "won't be protected from a future --sync overwrite by name collision. "
-        "Listen to it, then:"
-    )
+    print("\nListen to it, then if you want to edit it:")
     print(f"  python3 build_playlist.py --show {playlist_id}")
-    print(f"  python3 build_playlist.py --exclude-dir {exclude_dir} --sync {playlist_id} --plan {plan_path} --dry-run   # after editing the plan")
-    print(f"  python3 build_playlist.py --exclude-dir {exclude_dir} --finalize {playlist_id}   # once you confirm it's done")
+    if exclude_dir:
+        print(f"  python3 build_playlist.py --exclude-dir {exclude_dir} --sync {playlist_id} --plan {plan_path} --dry-run   # after editing the plan")
+        print(
+            "\nNOT yet finalized -- its tracks can still be reused elsewhere and it "
+            "won't be protected from a future --sync overwrite by name collision:"
+        )
+        print(f"  python3 build_playlist.py --exclude-dir {exclude_dir} --finalize {playlist_id}   # once you confirm it's done")
+    else:
+        print(f"  python3 build_playlist.py --sync {playlist_id} --plan {plan_path} --dry-run   # after editing the plan")
     return 0
 
 
@@ -423,12 +436,12 @@ def cmd_show(client, playlist_id: str) -> int:
     return 0
 
 
-def cmd_sync(client, playlist_id: str, plan_path: str, protocol: dict, exclude_dir: str, dry_run: bool, check_lyrics: bool = True) -> int:
+def cmd_sync(client, playlist_id: str, plan_path: str, protocol: dict, exclude_dir: str | None, dry_run: bool, check_lyrics: bool = True) -> int:
     plan = json.loads(Path(plan_path).read_text())
     current = client.get_playlist(playlist_id, limit=None)
     current_tracks = current.get("tracks", [])
     own_ids = {t["videoId"] for t in current_tracks if t.get("videoId")}
-    excluded_ids = get_all_excluded_video_ids(client, exclude_dir) - own_ids
+    excluded_ids = (get_all_excluded_video_ids(client, exclude_dir) - own_ids) if exclude_dir else set()
 
     resolved_phases, issues = build_timeline(client, plan, protocol, exclude_dir=exclude_dir, check_lyrics=check_lyrics, excluded_ids=excluded_ids)
     print_timeline(resolved_phases, issues)
@@ -456,7 +469,8 @@ def cmd_sync(client, playlist_id: str, plan_path: str, protocol: dict, exclude_d
     _add_items_with_retry(client, playlist_id, all_video_ids)
 
     print(f"\nSynced {playlist_id}: replaced {len(removable)} track(s) with {len(all_video_ids)} from the plan.")
-    print("Still not finalized -- run --finalize once you confirm it's done.")
+    if exclude_dir:
+        print("Still not finalized -- run --finalize once you confirm it's done.")
     return 0
 
 
@@ -497,7 +511,7 @@ def main() -> int:
         parser.error("--sync requires --plan")
     needs_exclude_dir = any([
         args.add_exclude, args.remove_exclude, args.add_exclude_track, args.list_exclude_tracks,
-        args.finalize, args.plan, args.sync,
+        args.finalize,
     ])
     if needs_exclude_dir and not args.exclude_dir:
         parser.error("--exclude-dir is required for this command")
