@@ -1,0 +1,7 @@
+# Runtime state (auth headers, exclude-list, venv) lives outside this repo
+# under ~/.local/share/ketamine-playlist/, but ignore these here too in case
+# anything ever gets created locally by mistake.
+venv/
+*.json
+__pycache__/
+*.pyc
