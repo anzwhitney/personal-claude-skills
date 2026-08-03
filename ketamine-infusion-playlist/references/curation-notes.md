@@ -20,18 +20,20 @@ avoid repeating too heavily.
 
 ## Instrumental-only (hard rule)
 - No lyrics anywhere in the playlist, except possibly a single closing track starting at/after
-  47:00. `build_playlist.py` enforces this automatically (confirmed lyrics text = hard block;
-  `feat.`/`ft.`/`featuring` in the title = flag) — see `references/ytmusicapi-guide.md` for how
-  the check works and its known false-negative risk.
+  47:00. Enforced automatically by the shared `yt-music-playlist` skill's `build_playlist.py`,
+  driven by this skill's `protocol.json` `vocal_policy` (confirmed lyrics text = hard block;
+  `feat.`/`ft.`/`featuring` in the title = flag) — see that skill's
+  `references/ytmusicapi-guide.md` for how the check works and its known false-negative risk.
 - If a query's version is ambiguous (an edit/remix/feature shares a title with the plain track),
-  disambiguate with `scripts/search_tracks.py -n 5 "Artist - Title"` before adding it to a plan
-  rather than trusting the top search hit.
+  disambiguate with the shared skill's `scripts/search_tracks.py -n 5 "Artist - Title"` before
+  adding it to a plan rather than trusting the top search hit.
 
 ## Do-not-use
 - Permanently disliked or ill-fitting tracks are tracked in
-  `~/.local/share/ketamine-playlist/exclude-tracks.json`, managed via
-  `scripts/build_playlist.py --add-exclude-track` / `--list-exclude-tracks` (checked
-  automatically by every plan/dry-run) — don't duplicate that list here in prose.
+  `~/.local/share/ketamine-playlist/exclude-tracks.json` (this skill's `--exclude-dir`), managed
+  via the shared skill's `build_playlist.py --exclude-dir ~/.local/share/ketamine-playlist
+  --add-exclude-track` / `--list-exclude-tracks` (checked automatically by every plan/dry-run) —
+  don't duplicate that list here in prose.
 
 ## General preferences
 - (add tempo preferences or other qualitative notes here as they come up)

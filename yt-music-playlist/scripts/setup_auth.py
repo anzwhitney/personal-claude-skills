@@ -3,7 +3,9 @@
 
 Wraps `ytmusicapi.setup()`, which walks the user through pasting request
 headers copied from music.youtube.com in their browser's dev tools, and
-writes the result to the skill's runtime state dir (outside the git repo).
+writes the result to this skill's shared runtime state dir (outside the git
+repo). Auth is account-level, so every playlist skill built on top of this
+one shares the same auth file.
 
 Usage:
     python3 setup_auth.py                       # reuse existing auth if it still works
