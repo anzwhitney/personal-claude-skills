@@ -61,6 +61,8 @@ Draw candidates from them first. Their tracks are in the audio cache, so
 `analyze_tracks.py --playlist ID` profiles a whole pool instantly, and
 `--similar-to "<reference track>" ...` narrows a pool to what fits a phase. They must never
 be in the playlist exclude-list: that would ban exactly the tracks the user set aside to use.
+They're listed in `protocol.json`'s `candidate_playlists`, and `--prune-unavailable` keeps
+them free of unplayable tracks.
 
 ## Peak (26:00-39:00)
 - Anchor artist: **Max Cooper** (melodic, immersive, builds without becoming jarring).

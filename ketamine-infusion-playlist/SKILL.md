@@ -56,10 +56,20 @@ analysis. Without the audio requirements the dry-run still works but loses its a
    stale. (Auth is account-level and shared with any other playlist skill built on
    `yt-music-playlist`.)
 
+1b. **Check for unavailable tracks.** Run
+   `$PY $ENGINE --protocol $KTM/protocol.json --check-availability`.
+   - For the candidate pools (`protocol.json`'s `candidate_playlists`), remove unavailable
+     tracks right away with `--prune-unavailable`. The user has asked for this standing
+     cleanup, so it needs no confirmation.
+   - For any finished session playlist it reports, tell the user which tracks need replacing
+     and offer replacements, to be applied via `--sync` only with their approval.
+
 2. **Seed the playlist exclude-list (first run only).** If
    `~/.local/share/ketamine-playlist/exclude-playlists.json` doesn't exist yet, run
    `$PY $ENGINE --list-playlists`, show the user their library playlists, and ask which ones (if
-   any) are prior ketamine-session playlists whose tracks should never be reused. Add the chosen
+   any) are prior ketamine-session playlists whose tracks should never be reused. Never add the
+   candidate pools (see `protocol.json`'s `candidate_playlists`): they're collections of tracks
+   to use, not sessions. Add the chosen
    ones with `$PY $ENGINE --protocol $KTM/protocol.json --add-exclude ID [ID ...]`. Skip this
    step on later runs — the exclude-list persists. (`--remove-exclude ID [...]` undoes a
    mistaken add.)
