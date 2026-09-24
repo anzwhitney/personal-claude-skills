@@ -128,6 +128,9 @@ def main() -> int:
         if len(items) > 3 and not args.json:
             print(f"  analyzed {item['label']}" + (f" (FAILED: {err})" if err else ""), file=sys.stderr)
 
+    if ref and ref["error"]:
+        print(f"can't compare against {ref['label']}: {ref['error']}", file=sys.stderr)
+        return 2
     if ref:
         for item in items:
             item["similarity"] = style_similarity(ref["videoId"], item["videoId"]) if item["features"] else None
