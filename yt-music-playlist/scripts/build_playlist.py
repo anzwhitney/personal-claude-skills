@@ -102,12 +102,13 @@ DEFAULT_PROTOCOL = {
 # turns that check off. See "Audio analysis" in references/ytmusicapi-guide.md.
 AUDIO_POLICY_DEFAULTS = {
     "voice_flag_frac": 0.25,
-    "max_loudness_jump_lu": None,
+    "max_loudness_rise_lu": None,
     "max_arousal_jump": None,
     "max_tempo_ratio": None,
     "min_bpm_confidence": 1.5,
     "arc_metric": "arousal",
-    "arc_tolerance": 0.5,
+    "arc_tolerance": 1.0,
+    "arc_min_correlation": 0.3,
     "playback_normalization_lufs": -14.0,
 }
 
@@ -319,7 +320,7 @@ def _apply_audio_checks(
                 issues.append(f"[{phase['name']}] voice in audio ({feats['voice_frac']:.0%} of track; "
                               f"add to vocal_ok if acceptable): {_label(track)}")
 
-    max_loud = audio_policy.get("max_loudness_jump_lu")
+    max_loud = audio_policy.get("max_loudness_rise_lu")
     max_arousal = audio_policy.get("max_arousal_jump")
     max_tempo = audio_policy.get("max_tempo_ratio")
     for (pa, a), (pb, b) in zip(all_tracks, all_tracks[1:]):
@@ -329,8 +330,8 @@ def _apply_audio_checks(
                        audio_policy.get("min_bpm_confidence") or 0)
         where = pb["name"] if pa is pb else f"{pa['name']}->{pb['name']}"
         pair = f"at {format_mmss(b['start_seconds'])}: {a['artist']} - {a['title']!r} -> {_label(b, at=False)}"
-        if max_loud is not None and t["loudness_jump_lu"] is not None and abs(t["loudness_jump_lu"]) > max_loud:
-            issues.append(f"[{where}] loudness jump {t['loudness_jump_lu']:+.1f} LU {pair}")
+        if max_loud is not None and t["loudness_rise_lu"] is not None and t["loudness_rise_lu"] > max_loud:
+            issues.append(f"[{where}] opens {t['loudness_rise_lu']:+.1f} LU louder than the previous track {pair}")
         if max_arousal is not None and abs(t["arousal_delta"]) > max_arousal:
             issues.append(f"[{where}] energy jump (arousal {t['arousal_delta']:+.1f}) {pair}")
         if max_tempo is not None and t["tempo_ratio"] is not None and t["tempo_ratio"] > max_tempo:
@@ -338,6 +339,7 @@ def _apply_audio_checks(
 
     metric = audio_policy.get("arc_metric") or "arousal"
     tolerance = audio_policy.get("arc_tolerance") or 0
+    min_corr = audio_policy.get("arc_min_correlation")
     for phase in resolved_phases:
         arc = (segment_configs.get(phase["name"]) or {}).get("arc")
         tracks = [t for t in phase["tracks"] if t.get("audio") and t["audio"].get(metric) is not None]
@@ -351,9 +353,27 @@ def _apply_audio_checks(
                     f"[{phase['name']}] arc should be {arc}, but {metric} goes {a['audio'][metric]:.1f} -> "
                     f"{b['audio'][metric]:.1f} at {format_mmss(b['start_seconds'])}: "
                     f"{a['artist']} - {a['title']!r} -> {_label(b, at=False)}")
-        if (tracks[-1]["audio"][metric] - tracks[0]["audio"][metric]) * sign <= 0:
-            issues.append(f"[{phase['name']}] arc should be {arc} overall, but {metric} runs "
-                          f"{tracks[0]['audio'][metric]:.1f} -> {tracks[-1]['audio'][metric]:.1f} first to last track")
+        values = [t["audio"][metric] for t in tracks]
+        corr = _rank_correlation(values) * sign
+        if min_corr is not None and len(values) >= 3 and corr < min_corr:
+            issues.append(f"[{phase['name']}] arc should be {arc} overall, but {metric} barely follows it "
+                          f"(trend {corr:+.2f} < {min_corr}): {', '.join(f'{v:.1f}' for v in values)}")
+
+
+def _rank_correlation(values: list[float]) -> float:
+    """Spearman correlation of values against their order (+1 = steadily
+    rising, -1 = steadily falling). Tolerates the dips a gradual arc has."""
+    n = len(values)
+    if n < 2:
+        return 0.0
+    order = sorted(range(n), key=lambda i: values[i])
+    ranks = [0] * n
+    for rank, i in enumerate(order):
+        ranks[i] = rank
+    mean = (n - 1) / 2
+    cov = sum((i - mean) * (r - mean) for i, r in enumerate(ranks))
+    var = sum((i - mean) ** 2 for i in range(n))
+    return cov / var
 
 
 def _cached(video_id: str) -> bool:

@@ -94,7 +94,7 @@ def main() -> int:
     parser.add_argument("--plan", metavar="PLAN_JSON", help="analyze every track in a plan, in order")
     parser.add_argument("--playlist", metavar="PLAYLIST_ID", help="analyze every track in a live playlist")
     parser.add_argument("--similar-to", metavar="TRACK", help="rank the other tracks by sonic similarity to this one")
-    parser.add_argument("--transitions", action="store_true", help="also report each adjacent pair (loudness jump, arousal change, tempo, key)")
+    parser.add_argument("--transitions", action="store_true", help="also report each adjacent pair (loudness rise, arousal change, tempo, key)")
     parser.add_argument("--json", action="store_true", help="print full feature dicts as JSON instead of the table")
     parser.add_argument("--refresh", action="store_true", help="re-analyze even if cached")
     args = parser.parse_args()
@@ -158,11 +158,11 @@ def main() -> int:
             err = f"  [{item['error']}]" if item["error"] else ""
             print(f"{sim}{summary_columns(item['features'])}  {item['label']}{err}")
         if pairs:
-            print("\nTransitions (loudness jump at the join, arousal change, tempo ratio, Camelot key steps):")
+            print("\nTransitions (next start vs previous track's level in LU, arousal change, tempo ratio, Camelot key steps):")
             for p in pairs:
                 tempo = "?" if p["tempo_ratio"] is None else f"{p['tempo_ratio']:.2f}"
                 keyd = "?" if p["key_distance"] is None else p["key_distance"]
-                jump = "?" if p["loudness_jump_lu"] is None else f"{p['loudness_jump_lu']:+.1f}"
+                jump = "?" if p["loudness_rise_lu"] is None else f"{p['loudness_rise_lu']:+.1f}"
                 print(f"  {jump:>6}LU  ar{p['arousal_delta']:+5.1f}  tempo {tempo:>4}  key {keyd}  "
                       f"{p['from']}  ->  {p['to']}")
 

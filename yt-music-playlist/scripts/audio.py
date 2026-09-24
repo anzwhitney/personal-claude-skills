@@ -418,10 +418,16 @@ def playback_level(feats: dict[str, Any], field: str, normalization: float | Non
 def transition(a: dict[str, Any], b: dict[str, Any],
                normalization: float | None = DEFAULT_PLAYBACK_NORMALIZATION_LUFS,
                min_bpm_conf: float = 1.5) -> dict[str, Any]:
-    """Metrics for playing track a then track b."""
-    end, start = playback_level(a, "loud_end", normalization), playback_level(b, "loud_start", normalization)
+    """Metrics for playing track a then track b.
+
+    loudness_rise_lu is how far b's opening sits above a's overall playback
+    level. Measured against a's whole-track level rather than its last
+    seconds, because a quiet fade-out followed by a normal start is not
+    jarring, and drops into a quiet intro are routine in hand-curated
+    sessions; a track that opens clearly louder than what came before is."""
+    prev, start = playback_level(a, "lufs", normalization), playback_level(b, "loud_start", normalization)
     return {
-        "loudness_jump_lu": None if end is None or start is None else round(start - end, 1),
+        "loudness_rise_lu": None if prev is None or start is None else round(start - prev, 1),
         "arousal_delta": round(b["arousal"] - a["arousal"], 2),
         "tempo_ratio": tempo_ratio(a, b, min_bpm_conf),
         "key_distance": key_distance(a, b),
