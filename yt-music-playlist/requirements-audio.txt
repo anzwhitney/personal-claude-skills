@@ -1,0 +1,2 @@
+essentia-tensorflow==2.1b6.dev1389
+yt-dlp[default,deno]>=2026.8.19
