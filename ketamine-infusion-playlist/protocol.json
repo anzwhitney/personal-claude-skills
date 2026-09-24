@@ -17,7 +17,7 @@
     {"id": "PL9yl9AZo1F72_DaRagJLDql5zJmkXm2sA", "name": "Water songs for ketamine"}
   ],
   "audio_policy": {
-    "voice_flag_frac": 0.25,
+    "voice_flag_frac": 0.35,
     "max_loudness_rise_lu": 8,
     "max_arousal_jump": 2.0,
     "max_tempo_ratio": null,

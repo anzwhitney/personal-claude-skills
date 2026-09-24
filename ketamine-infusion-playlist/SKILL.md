@@ -41,9 +41,14 @@ feature cache, but can't analyze new ones.
   don't rely on curation judgment alone.
 - **No audible voice, not just no lyrics.** `protocol.json`'s `audio_policy` flags any track
   where a voice is heard in a meaningful share of the audio. That includes wordless vocals,
-  chopped vocal samples and choirs, which the lyrics lookup can't see. A flag is advisory:
-  audition the track, then either replace it or, if the voice is acceptable, add its query to
-  the plan's `vocal_ok`. The same last-slot exception after 47:00 applies.
+  chopped vocal samples and choirs, which the lyrics lookup can't see. Unobtrusive background
+  voices are fine; a voice salient enough to draw attention is not.
+  - The detector is often wrong (water and rain textures read as voice), so a "possible
+    voice" flag means *ask the user to listen*. Give them the flag's link, which starts at the
+    first detected voice.
+  - Record their answer with `analyze_tracks.py --mark-voice salient|ok TRACK`. It then
+    applies to every future session: `salient` tracks are always flagged, `ok` tracks never.
+  - The same last-slot exception after 47:00 applies.
 - **Timing.** The playlist may run well past 50:00 — the clinician fades the music out around
   then regardless of what's queued. The only hard rule is that no track may *start* at/after
   50:00; only the portion of Wind-down before 50:00 counts toward its length target.
