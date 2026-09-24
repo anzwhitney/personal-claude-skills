@@ -27,6 +27,17 @@ as measured on 2026-09-24:
 - **Peak in practice is not the loudest or most energetic stretch.** Arousal there often
   steps *down* from late Build (e.g. Wasp 6.3 -> Small Giraffes 4.0). That's why
   `protocol.json` sets no arc on Peak.
+- **Peak's goal is *immersive*, not intense, and no measured feature captures immersion.**
+  Tested 2026-09-24 on the reference sessions plus the Beach session:
+  - Similarity to Max Cooper's style profile doesn't mark Peak picks. Build tracks scored
+    *more* Max-Cooper-like (0.76) than non-Max-Cooper Peak picks (0.53), and "Small
+    Giraffes" / "Your Hand in Mine" scored near zero.
+  - Nothing else separates Peak from Build either: duration, loudness range, swell, arousal,
+    mood, onset density.
+
+  So choose Peak tracks by ear, with "Max Cooper or similar" as the anchor. Use
+  `analyze_tracks.py --similar-to` against tracks the user has called immersive only to
+  *find candidates*, never as a score.
 - **Closers:** one track, anywhere from calm (CSNY "Helplessly Hoping", the vocal exception)
   to bright (Fakear "Water Lullaby", arousal 6.0).
 - **Transitions:** a track rarely opens more than ~3 LU above the previous track's level
