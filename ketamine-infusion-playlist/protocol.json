@@ -1,8 +1,8 @@
 {
   "segments": [
-    {"name": "Build", "target_seconds": 2100, "arc": "rising"},
-    {"name": "Peak", "target_seconds": 600, "diversity_exempt": true},
-    {"name": "Wind-down", "target_seconds": 300, "count_to_boundary_only": true}
+    {"name": "Build", "target_seconds": 1560, "arc": "rising"},
+    {"name": "Peak", "target_seconds": 780, "diversity_exempt": true},
+    {"name": "Wind-down", "target_seconds": 660, "count_to_boundary_only": true}
   ],
   "total_target_seconds": 3000,
   "phase_tolerance_seconds": 90,

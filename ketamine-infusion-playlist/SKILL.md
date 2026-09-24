@@ -5,9 +5,10 @@ description: Build a curated YouTube Music playlist timed to the phases of a ket
 
 Build a 50-minute YouTube Music playlist (40 min active infusion + 10 min comedown) for a
 ketamine infusion session, following the fixed 3-phase protocol in
-`references/phase-template.md` and encoded in `protocol.json`: **Build** (0:00-35:00,
-intensifying ambient/downtempo), **Peak** (35:00-45:00, immersive melodic electronic anchored
-on Max Cooper), **Wind-down** (45:00-50:00+, gentle emergent closers). Read
+`references/phase-template.md` and encoded in `protocol.json`:
+- **Build** (0:00-26:00): intensifying ambient/downtempo.
+- **Peak** (26:00-39:00): immersive melodic electronic, anchored on Max Cooper.
+- **Wind-down** (39:00-50:00+): gentle emergent closers. Read
 `references/phase-template.md` and `references/curation-notes.md` before curating tracks — they
 hold the full character description per phase and notes from prior sessions.
 
@@ -82,7 +83,7 @@ analysis. Without the audio requirements the dry-run still works but loses its a
    **Use the audio analysis while curating**, since the protocol cares how tracks *feel*:
    - `$PY $(dirname $ENGINE)/analyze_tracks.py "Artist - Title" ...` shows voice%, arousal
      (energy, 1-9), relaxed, loudness, start>end level, bpm, key and styles for candidates.
-   - **Build** should climb in arousal across its ~35 minutes, gradually and without big steps.
+   - **Build** should climb in arousal across its ~26 minutes, gradually and without big steps.
      **Peak** holds the highest arousal. **Wind-down** steps back down.
    - `--similar-to "<a track that worked>" CANDIDATES...` finds candidates that sound like
      known-good tracks from `references/curation-notes.md`. Use it when the user asks for a

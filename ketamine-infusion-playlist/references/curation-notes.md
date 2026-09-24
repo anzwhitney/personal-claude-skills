@@ -18,15 +18,21 @@ instantly, and any of their tracks makes a good `--similar-to` reference. What t
 as measured on 2026-09-24:
 
 - **Build settles, then climbs.** Arousal starts ~4.2-4.4, dips to ~3.5-3.8 over tracks 2-5,
-  then climbs to ~5.5-6.3 by 30-35 min. Rank trend +0.63 / +0.69 / +0.82. "Relaxed" falls in
+  then climbs to ~5.0-5.7 by 26 min. Rank trend +0.48 / +0.63 / +0.74. "Relaxed" falls in
   step. Loudness does *not* follow the build; quiet field-recording and piano tracks sit
   between louder ones.
 - **The texture palette** is field recordings / nature sound (rain, water, storms), Yosi
   Horikawa, Kishi Bashi, Max Cooper's ambient side, and post-rock or acoustic interludes.
-  Max Cooper usually arrives in late Build (Wasp, Autumn Haze, Order from Chaos).
-- **Peak in practice is not the loudest or most energetic stretch.** Arousal there often
-  steps *down* from late Build (e.g. Wasp 6.3 -> Small Giraffes 4.0). That's why
-  `protocol.json` sets no arc on Peak.
+- **Peak = the closing run of Max Cooper tracks:** OG 23:53-36:08 (Resynthesis, Wasp),
+  Thunderstorm 26:22-39:05 (Penrose Tiling, Order from Chaos), Water 27:25-42:41 (Autumn
+  Haze, Ripple). Their average gives the protocol's 26:00-39:00.
+  - An early Max Cooper track can still sit in Build (Awakening 9:10, Woven Ancestry 16:13).
+  - The generated Beach session used the old 35:00 Peak start and felt late.
+  - Peak holds the session's highest arousal in 2 of 3 references. It's not required to,
+    so `protocol.json` sets no arc on Peak.
+- **Wind-down opens with a clear step out of the Max Cooper run:** "Small Giraffes" in OG,
+  "Rain Meditation" in Thunderstorm, "Calming Rain" in Water. Its energy then varies rather
+  than steadily falling, so it has no arc.
 - **Peak's goal is *immersive*, not intense, and no measured feature captures immersion.**
   Tested 2026-09-24 on the reference sessions plus the Beach session:
   - Similarity to Max Cooper's style profile doesn't mark Peak picks. Build tracks scored
@@ -56,17 +62,17 @@ Draw candidates from them first. Their tracks are in the audio cache, so
 `--similar-to "<reference track>" ...` narrows a pool to what fits a phase. They must never
 be in the playlist exclude-list: that would ban exactly the tracks the user set aside to use.
 
-## Peak (35:00-45:00)
+## Peak (26:00-39:00)
 - Anchor artist: **Max Cooper** (melodic, immersive, builds without becoming jarring).
 - Other artists in a similar register are welcome for variety within the cap.
 
-## Build (0:00-35:00)
-- Ambient / downtempo, intensifying gradually across the full 35 minutes.
+## Build (0:00-26:00)
+- Ambient / downtempo, intensifying gradually across the full 26 minutes.
 - Avoid looping the same mood the whole phase — vary texture while keeping the overall arc calm-to-rising.
 
-## Wind-down (45:00-50:00+)
+## Wind-down (39:00-50:00+)
 - Gentle, emergent, a felt sense of "return."
-- 1-3 tracks is usually enough; don't overfill past the target just to add variety.
+- 3-4 tracks fill the ~11 minutes; don't overfill past the target just to add variety.
 - The final track may carry vocals only if it starts at/after 47:00 — everything else in the
   playlist must be fully instrumental. See "Instrumental-only" below.
 
