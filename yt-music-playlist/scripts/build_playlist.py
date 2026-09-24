@@ -665,7 +665,15 @@ def _track_name(track: dict) -> str:
     return f"{artists[0]['name'] if artists else 'Unknown'} - {track.get('title')}"
 
 
-def default_availability_targets(client, protocol: dict, exclude_dir: str | None) -> tuple[list[str], list[str]]:
+def _read_playlist(client, playlist_id: str) -> dict | None:
+    try:
+        return client.get_playlist(playlist_id, limit=None)
+    except Exception as exc:  # noqa: BLE001 - one bad id shouldn't abort the rest
+        print(f"  warning: could not fetch playlist {playlist_id!r}: {exc}", file=sys.stderr)
+        return None
+
+
+def default_availability_targets(protocol: dict, exclude_dir: str | None) -> tuple[list[str], list[str]]:
     """(candidate pool ids, finished playlist ids) a protocol cares about:
     its "candidate_playlists" and, with no-reuse tracking on, the
     exclude-list's finished playlists."""
@@ -677,9 +685,12 @@ def default_availability_targets(client, protocol: dict, exclude_dir: str | None
 def cmd_check_availability(client, pool_ids: list[str], other_ids: list[str]) -> int:
     """Report unavailable tracks. Candidate pools are prune targets;
     anything else (e.g. a finished session) needs its tracks replaced."""
-    found = 0
+    found = unreadable = 0
     for pid, is_pool in [(p, True) for p in pool_ids] + [(p, False) for p in other_ids]:
-        playlist = client.get_playlist(pid, limit=None)
+        playlist = _read_playlist(client, pid)
+        if playlist is None:
+            unreadable += 1
+            continue
         bad = _unavailable_tracks(playlist)
         found += len(bad)
         if not bad:
@@ -688,20 +699,27 @@ def cmd_check_availability(client, pool_ids: list[str], other_ids: list[str]) ->
         print(f"{playlist.get('title')} ({pid}) [{kind}]:")
         for t in bad:
             print(f"  UNAVAILABLE: {_track_name(t)}  videoId={t.get('videoId')}")
-    print(f"{found} unavailable track(s) across {len(pool_ids) + len(other_ids)} playlist(s).")
-    return 0
+    print(f"{found} unavailable track(s) across {len(pool_ids) + len(other_ids)} playlist(s)."
+          + (f" {unreadable} couldn't be read." if unreadable else ""))
+    return 2 if unreadable else 0
 
 
 def cmd_prune_unavailable(client, playlist_ids: list[str], dry_run: bool) -> int:
+    removed = unreadable = 0
     for pid in playlist_ids:
-        playlist = client.get_playlist(pid, limit=None)
+        playlist = _read_playlist(client, pid)
+        if playlist is None:
+            unreadable += 1
+            continue
         bad = [t for t in _unavailable_tracks(playlist) if t.get("videoId") and t.get("setVideoId")]
         for t in bad:
             print(f"{'would remove' if dry_run else 'removing'} from {playlist.get('title')!r}: {_track_name(t)}")
         if bad and not dry_run:
             client.remove_playlist_items(pid, [{"videoId": t["videoId"], "setVideoId": t["setVideoId"]} for t in bad])
             print("  (removals can take several seconds to show up in a re-read of the playlist)")
-    return 0
+        removed += len(bad)
+    print(f"{removed} unavailable track(s) {'to remove' if dry_run else 'removed'} across {len(playlist_ids)} playlist(s).")
+    return 2 if unreadable else 0
 
 
 def cmd_finalize(client, exclude_dir: str, playlist_id: str) -> int:
@@ -771,7 +789,7 @@ def main() -> int:
     if checking:
         if args.check_availability:
             return cmd_check_availability(client, [], args.check_availability)
-        pools, finished = default_availability_targets(client, protocol, exclude_dir)
+        pools, finished = default_availability_targets(protocol, exclude_dir)
         if not pools and not finished:
             parser.error("--check-availability without ids needs a --protocol with candidate_playlists and/or an exclude-dir")
         return cmd_check_availability(client, pools, finished)
