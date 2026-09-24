@@ -135,7 +135,8 @@ already in the defaults.
 
 **D. Local caches when they're committed.** Locally, `analyze_tracks.py` writes into the repo
 working tree once the caches move. Treat that like Part 3's exclude lists: commit the updated
-cache alongside the session's other changes.
+cache alongside the session's other changes. The same goes for `voice-verdicts.json`, the
+user's listening verdicts, which can't be regenerated at all.
 
 ---
 

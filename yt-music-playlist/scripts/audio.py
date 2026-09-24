@@ -52,6 +52,11 @@ MODELS_DIR = STATE_DIR / "models"
 AUDIO_TMP_DIR = STATE_DIR / "audio-tmp"
 FEATURES_CACHE_FILE = STATE_DIR / "audio-features.json"
 EMBEDDINGS_CACHE_FILE = STATE_DIR / "audio-embeddings.json"
+# The user's own listening verdicts on voice, which override the detector:
+# it confuses water, rain and lofi textures with voice, and can't be
+# thresholded into agreeing with a human ear.
+VOICE_VERDICTS_FILE = STATE_DIR / "voice-verdicts.json"
+VOICE_VERDICTS = ("salient", "ok")  # needs restricting / no voice or only unobtrusive background
 
 MODEL_BASE_URL = "https://essentia.upf.edu/models"
 MODELS = {
@@ -176,6 +181,26 @@ def _store(video_id: str, features: dict[str, Any], vectors: dict[str, Any]) -> 
     embs[video_id] = {k: base64.b64encode(np.asarray(v, dtype=np.float16).tobytes()).decode()
                       for k, v in vectors.items()}
     _save_per_line(EMBEDDINGS_CACHE_FILE, embs)
+
+
+def load_voice_verdicts() -> dict[str, dict[str, str]]:
+    return _load_json(VOICE_VERDICTS_FILE)
+
+
+def voice_verdict(video_id: str) -> str | None:
+    return (load_voice_verdicts().get(video_id) or {}).get("verdict")
+
+
+def set_voice_verdict(video_id: str, verdict: str | None, label: str | None = None) -> None:
+    """Record (or with None, forget) the user's verdict on a track's voice."""
+    if verdict is not None and verdict not in VOICE_VERDICTS:
+        raise ValueError(f"voice verdict must be one of {VOICE_VERDICTS}, not {verdict!r}")
+    verdicts = load_voice_verdicts()
+    if verdict is None:
+        verdicts.pop(video_id, None)
+    else:
+        verdicts[video_id] = {"verdict": verdict, "label": label or video_id}
+    _save_per_line(VOICE_VERDICTS_FILE, verdicts)
 
 
 # --- Models and audio fetching ---

@@ -180,6 +180,14 @@ were the calibration references: "[OG] Ketamine - revised", "Anz Ketamine - Thun
   through via the exception slot.
 - **Result:** the three references raise 1, 3 and 2 advisories, each a genuine outlier.
 
+*Implementation note (voice, after the user listened to all 13 flagged tracks):* only
+Kerala (40%) and the CSNY closer have a voice salient enough to restrict. Four fully
+instrumental water/rain/lofi tracks scored 51–82%, and unobtrusive background voices scored
+25–35%, so no threshold works. Swapping in other detectors didn't help: in a spike, the musicnn
+voice head was no better, and Jamendo "voice" and YAMNet singing read ~0 even for CSNY. The fix
+is user verdicts (`--mark-voice`) that override the score, plus a 0.35 threshold to reduce the
+flags to check. Next candidate: Gemini audio understanding via YouTube URL.
+
 ### 7. Docs
 
 - `yt-music-playlist/SKILL.md`: an optional audio step in the workflow.

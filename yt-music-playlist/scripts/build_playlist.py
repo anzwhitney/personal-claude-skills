@@ -108,7 +108,7 @@ DEFAULT_PROTOCOL = {
 # Filled in under a protocol's "audio_policy" block; a threshold set to None
 # turns that check off. See references/audio-analysis.md.
 AUDIO_POLICY_DEFAULTS = {
-    "voice_flag_frac": 0.25,
+    "voice_flag_frac": 0.35,
     "max_loudness_rise_lu": None,
     "max_arousal_jump": None,
     "max_tempo_ratio": None,
@@ -296,7 +296,7 @@ def _apply_audio_checks(
     arc runs against the protocol's per-segment "arc". Attaches each track's
     features as track["audio"] for the timeline. Never produces a blocking
     issue -- these are listening aids, not rules."""
-    from audio import FeatureSource, audio_unavailable_reason, transition
+    from audio import FeatureSource, audio_unavailable_reason, load_voice_verdicts, transition
 
     all_tracks = [(phase, track) for phase in resolved_phases for track in phase["tracks"]]
     if not all_tracks:
@@ -321,18 +321,24 @@ def _apply_audio_checks(
 
     last_track = all_tracks[-1][1]
     voice_frac = audio_policy.get("voice_flag_frac")
+    verdicts = load_voice_verdicts()
     if voice_frac is not None:
         for phase, track in all_tracks:
             feats = track["audio"]
-            if (feats and feats["voice_frac"] >= voice_frac
-                    and track.get("query") not in vocal_ok_queries
-                    and not _in_vocal_exception_slot(track, last_track, vocal_policy)):
+            verdict = (verdicts.get(track["videoId"]) or {}).get("verdict")
+            if (track.get("query") in vocal_ok_queries or verdict == "ok"
+                    or _in_vocal_exception_slot(track, last_track, vocal_policy)):
+                continue
+            url = f"https://www.youtube.com/watch?v={track['videoId']}"
+            if verdict == "salient":
+                issues.append(f"[{phase['name']}] voice (you marked it salient): {_label(track)} {url}")
+            elif feats and feats["voice_frac"] >= voice_frac:
                 segs = feats.get("voice_segments") or []
                 when = ", ".join(f"{format_mmss(x)}-{format_mmss(y)}" for x, y in segs[:4]) + (" ..." if len(segs) > 4 else "")
                 where = f" at {when}" if segs else ""
-                issues.append(f"[{phase['name']}] voice in audio ({feats['voice_frac']:.0%} of track{where}; "
-                              f"add to vocal_ok if acceptable): {_label(track)} "
-                              f"https://www.youtube.com/watch?v={track['videoId']}&t={segs[0][0] if segs else 0}s")
+                issues.append(f"[{phase['name']}] possible voice in audio ({feats['voice_frac']:.0%} of track{where}; "
+                              f"listen, then record with analyze_tracks.py --mark-voice): {_label(track)} "
+                              f"{url}&t={segs[0][0] if segs else 0}s")
 
     max_loud = audio_policy.get("max_loudness_rise_lu")
     max_arousal = audio_policy.get("max_arousal_jump")

@@ -28,6 +28,7 @@ Usage:
     python3 analyze_tracks.py --playlist PLxxxx
     python3 analyze_tracks.py --similar-to "Max Cooper - Repeat" "Candidate A - X" "Candidate B - Y"
     python3 analyze_tracks.py --json 9GAEx0WpkG8
+    python3 analyze_tracks.py --mark-voice ok "Yosi Horikawa - Tono"   # after listening
 
 Positional arguments are "Artist - Title" queries, or bare 11-character
 videoIds. With --plan, tracks are taken from the plan in order (phase
@@ -43,8 +44,11 @@ from pathlib import Path
 
 from audio import (
     FeatureSource,
+    VOICE_VERDICTS,
     audio_unavailable_reason,
     cached_features,
+    set_voice_verdict,
+    voice_verdict,
     style_similarity,
     summary_columns,
     transition,
@@ -98,6 +102,10 @@ def main() -> int:
     parser.add_argument("--transitions", action="store_true", help="also report each adjacent pair (loudness rise, arousal change, tempo, key)")
     parser.add_argument("--json", action="store_true", help="print full feature dicts as JSON instead of the table")
     parser.add_argument("--refresh", action="store_true", help="re-analyze even if cached")
+    parser.add_argument("--mark-voice", choices=[*VOICE_VERDICTS, "clear"],
+                        help="record your listening verdict for the given tracks, then exit: 'salient' "
+                             "(voice that needs restricting), 'ok' (no voice, or only unobtrusive "
+                             "background), or 'clear' to forget it. Verdicts override the detector.")
     args = parser.parse_args()
 
     if not (args.tracks or args.plan or args.playlist):
@@ -108,6 +116,15 @@ def main() -> int:
         items += plan_items(client, args.plan)
     if args.playlist:
         items += playlist_items(client, args.playlist)
+    if args.mark_voice:
+        verdict = None if args.mark_voice == "clear" else args.mark_voice
+        for item in items:
+            label = item["label"]
+            if label == item["videoId"]:
+                label = (cached_features(item["videoId"]) or {}).get("label") or label
+            set_voice_verdict(item["videoId"], verdict, label)
+            print(f"voice {args.mark_voice}: {label} ({item['videoId']})")
+        return 0 if items else 2
     ref = None
     if args.similar_to:
         refs = resolve_items(client, [args.similar_to])
@@ -152,7 +169,7 @@ def main() -> int:
                 pairs.append({"from": a["label"], "to": b["label"], **transition(a["features"], b["features"])})
 
     if args.json:
-        out = {"tracks": [{k: v for k, v in i.items()} for i in items]}
+        out = {"tracks": [{**i, "voice_verdict": voice_verdict(i["videoId"])} for i in items]}
         if ref:
             out["reference"] = ref
         if args.transitions:
@@ -168,7 +185,9 @@ def main() -> int:
                 print(f"--- {phase} ---")
             sim = f"sim{item['similarity']:5.2f} " if item.get("similarity") is not None else ("sim   ?  " if ref else "")
             err = f"  [{item['error']}]" if item["error"] else ""
-            print(f"{sim}{summary_columns(item['features'])}  {item['label']}{err}")
+            verdict = voice_verdict(item["videoId"])
+            heard = f"  [you: voice {verdict}]" if verdict else ""
+            print(f"{sim}{summary_columns(item['features'])}  {item['label']}{heard}{err}")
         if pairs:
             print("\nTransitions (next start vs previous track's level in LU, arousal change, tempo ratio, Camelot key steps):")
             for p in pairs:

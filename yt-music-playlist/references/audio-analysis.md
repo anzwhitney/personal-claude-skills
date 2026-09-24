@@ -40,7 +40,7 @@ Two consumers use it:
 
 | Feature | Meaning | Use |
 |---|---|---|
-| `voice_frac` | Share of ~2s frames with any voice, including wordless or sampled vocals | Catches what the lyrics lookup can't (e.g. Bonobo – Kerala ≈ 40%). Pure instrumentals measured 0–6%. |
+| `voice_frac` | Share of ~2s frames with any voice, including wordless or sampled vocals | Catches what the lyrics lookup can't (e.g. Bonobo – Kerala ≈ 40%). **Unreliable**: it reads water, rain and lofi textures as voice (51–82% on fully instrumental tracks), so treat it as "worth a listen" and record the verdict (below). |
 | `arousal` / `valence` | Energy and positivity, 1–9 | `arousal` is the default intensity measure for arcs. |
 | `relaxed` / `sad` / `aggressive` / `danceable` | Mean class probabilities | **Coarse**: compare tracks with each other, don't read them as labels. |
 | `styles` | Top Discogs styles | E.g. `Electronic/Ambient`, `Classical/Neo-Classical`. |
@@ -69,9 +69,17 @@ Two consumers use it:
 
 **`audio_policy` keys** (defaults from `build_playlist.AUDIO_POLICY_DEFAULTS`; `null` turns a
 check off):
-- `voice_flag_frac` (0.25): flag any track with at least this share of voice frames.
+- `voice_flag_frac` (0.35): flag any track with at least this share of voice frames.
   - It's advisory only: cleared per track via the plan's `vocal_ok`, and skipped for the
     `vocal_policy` exception slot.
+  - **Your verdicts override it.** After listening, record one with
+    `analyze_tracks.py --mark-voice salient|ok|clear TRACK...`. `salient` flags the track
+    whatever its score; `ok` means no voice, or only unobtrusive background, and silences the
+    flag. Verdicts live in `~/.local/share/yt-music-playlist/voice-verdicts.json`, keyed by
+    videoId, so a different upload of the same song needs its own.
+  - No threshold separates real voice from texture. In testing, Kerala (40%) scored below
+    four fully instrumental tracks (51–82%). Background voices that are fine for a session
+    scored 25–35%. 0.35 only cuts down the flags you have to check.
   - Confirmed lyrics text stays under `vocal_policy`'s block/flag rules.
 - `max_loudness_rise_lu` (null), `max_arousal_jump` (null), `max_tempo_ratio` (null): warn on
   adjacent-track changes above these. Tempo is compared after folding out half and double time,

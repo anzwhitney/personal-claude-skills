@@ -28,6 +28,9 @@ requests: uncached tracks cost ~15-30s each.
   relaxed, loudness, start>end level, bpm, Camelot key, top styles.
 - `--similar-to "Artist - Title" CANDIDATES...` ranks candidates by how alike they sound.
 - `--plan plan.json --transitions` reports loudness, energy, tempo and key changes at each join.
+- The voice score is unreliable (texture reads as voice). After the user listens to a flagged
+  track, record their verdict with `--mark-voice salient|ok TRACK...`; it overrides the score
+  in every later dry-run.
 
 A protocol can also enforce this in the dry-run via `audio_policy` (advisory warnings only).
 See `references/audio-analysis.md` for features, caveats and the schema.
