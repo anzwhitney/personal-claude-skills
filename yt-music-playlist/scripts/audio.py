@@ -13,6 +13,9 @@ when the dependencies aren't installed.
 Feature dict (one per videoId, see analyze()):
   voice_frac   share of ~2s model frames classified as voice (>0.5)
   voice_mean   mean voice probability across frames
+  voice_segments   [[start_s, end_s], ...] where voice is detected (gaps up
+               to VOICE_MERGE_GAP_SECONDS merged). Present on analyses made
+               since it was added; re-run with --refresh to backfill a track.
   relaxed, sad, aggressive, danceable   mean class probabilities (0-1)
   arousal, valence   emomusic regression (1-9 scale)
   lufs, lra    EBU R128 integrated loudness / loudness range
@@ -95,6 +98,12 @@ EFFNET_HEADS = [
 ]
 
 TOP_STYLES = 5
+
+# TensorflowPredictEffnetDiscogs' default patch hop (62 mel frames of 256
+# samples at 16kHz); each frame's prediction covers ~2s from its start.
+EFFNET_FRAME_HOP_SECONDS = 62 * 256 / 16000
+EFFNET_FRAME_SPAN_SECONDS = 128 * 256 / 16000
+VOICE_MERGE_GAP_SECONDS = 4
 
 EDGE_WINDOW_SECONDS = 30
 SHORT_TERM_HOP_SECONDS = 0.1  # LoudnessEBUR128's default hopSize
@@ -287,6 +296,7 @@ class Analyzer:
             if name == "voice":
                 feats["voice_frac"] = round(float((probs > 0.5).mean()), 3)
                 feats["voice_mean"] = round(float(probs.mean()), 3)
+                feats["voice_segments"] = _voice_segments(probs > 0.5, len(audio16) / 16000)
             else:
                 feats[name] = round(float(probs.mean()), 3)
 
@@ -359,6 +369,21 @@ class FeatureSource:
             return self._analyzer.analyze(video_id, label, refresh=self.refresh), None
         except Exception as exc:  # noqa: BLE001 - reported per track, never fatal
             return None, f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}"
+
+
+def _voice_segments(voiced, duration: float) -> list[list[int]]:
+    """Merge per-frame voice detections into [start, end] second ranges."""
+    segments: list[list[float]] = []
+    for i, on in enumerate(voiced):
+        if not on:
+            continue
+        start = i * EFFNET_FRAME_HOP_SECONDS
+        end = min(start + EFFNET_FRAME_SPAN_SECONDS, duration)
+        if segments and start - segments[-1][1] <= VOICE_MERGE_GAP_SECONDS:
+            segments[-1][1] = end
+        else:
+            segments.append([start, end])
+    return [[int(a), int(round(b))] for a, b in segments]
 
 
 def _edge_level(values, pct: int = 75) -> float | None:

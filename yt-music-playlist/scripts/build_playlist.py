@@ -317,8 +317,12 @@ def _apply_audio_checks(
             if (feats and feats["voice_frac"] >= voice_frac
                     and track.get("query") not in vocal_ok_queries
                     and not _in_vocal_exception_slot(track, last_track, vocal_policy)):
-                issues.append(f"[{phase['name']}] voice in audio ({feats['voice_frac']:.0%} of track; "
-                              f"add to vocal_ok if acceptable): {_label(track)}")
+                segs = feats.get("voice_segments") or []
+                when = ", ".join(f"{format_mmss(x)}-{format_mmss(y)}" for x, y in segs[:4]) + (" ..." if len(segs) > 4 else "")
+                where = f" at {when}" if segs else ""
+                issues.append(f"[{phase['name']}] voice in audio ({feats['voice_frac']:.0%} of track{where}; "
+                              f"add to vocal_ok if acceptable): {_label(track)} "
+                              f"https://www.youtube.com/watch?v={track['videoId']}&t={segs[0][0] if segs else 0}s")
 
     max_loud = audio_policy.get("max_loudness_rise_lu")
     max_arousal = audio_policy.get("max_arousal_jump")
