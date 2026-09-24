@@ -215,8 +215,11 @@ Two consumers use it:
   `pip install -U "yt-dlp[default,deno]"`.
 - Models (~27MB) download and checksum themselves on first use into
   `~/.local/share/yt-music-playlist/models/`.
-- Without these packages installed, `analyze_tracks.py` exits with a one-line reason and
-  `build_playlist.py` adds a single "audio analysis unavailable" note. Nothing else changes.
+- Without these packages installed, **cached tracks still work**: their features, the
+  timeline columns and every `audio_policy` check. Only uncached tracks are left unanalyzed.
+  `build_playlist.py` adds one "audio analysis unavailable" note giving the count.
+  `analyze_tracks.py` prints the reason and exits 3. `--similar-to` needs the full install
+  even for cached tracks, because it needs numpy.
 
 **Cost:**
 - ~15-30s per uncached track, since download + analysis runs on CPU;

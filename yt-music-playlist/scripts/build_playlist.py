@@ -301,16 +301,19 @@ def _apply_audio_checks(
     all_tracks = [(phase, track) for phase in resolved_phases for track in phase["tracks"]]
     if not all_tracks:
         return
-    reason = audio_unavailable_reason()
-    if reason:
-        issues.append(reason)
-        return
-
     source = FeatureSource()
-    misses = [t for _, t in all_tracks if not _cached(t["videoId"])]
-    if misses:
+    misses = {t["videoId"] for _, t in all_tracks if not _cached(t["videoId"])}
+    # Cached features need no audio dependencies, so a missing install only
+    # costs the uncached tracks.
+    reason = audio_unavailable_reason() if misses else None
+    if reason:
+        issues.append(f"{reason}; {len(misses)} uncached track(s) left unanalyzed")
+    elif misses:
         print(f"Analyzing audio for {len(misses)} uncached track(s) (~15s each)...", file=sys.stderr)
     for phase, track in all_tracks:
+        if reason and track["videoId"] in misses:
+            track["audio"] = None
+            continue
         feats, err = source.get(track["videoId"], f"{track['artist']} - {track['title']}")
         track["audio"] = feats
         if err:

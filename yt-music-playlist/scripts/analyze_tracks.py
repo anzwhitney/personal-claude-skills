@@ -44,6 +44,7 @@ from pathlib import Path
 from audio import (
     FeatureSource,
     audio_unavailable_reason,
+    cached_features,
     style_similarity,
     summary_columns,
     transition,
@@ -101,11 +102,6 @@ def main() -> int:
 
     if not (args.tracks or args.plan or args.playlist):
         parser.error("give track queries/videoIds, --plan, or --playlist")
-    reason = audio_unavailable_reason()
-    if reason:
-        print(reason, file=sys.stderr)
-        return 3
-
     client = get_client()
     items = resolve_items(client, args.tracks)
     if args.plan:
@@ -119,8 +115,21 @@ def main() -> int:
             return 2
         ref = refs[0]
 
+    # Cached tracks need no audio dependencies; only misses do.
+    everything = ([ref] if ref else []) + items
+    reason = audio_unavailable_reason()
+    if reason and ref:
+        print(f"--similar-to needs the full audio install: {reason}", file=sys.stderr)
+        return 3
+    misses = {i["videoId"] for i in everything if args.refresh or not cached_features(i["videoId"])} if reason else set()
+    if misses:
+        print(reason, file=sys.stderr)
+
     source = FeatureSource(refresh=args.refresh)
-    for item in ([ref] if ref else []) + items:
+    for item in everything:
+        if item["videoId"] in misses:
+            item["features"], item["error"] = None, "not cached, and audio analysis isn't installed"
+            continue
         feats, err = source.get(item["videoId"], item["label"])
         item["features"], item["error"] = feats, err
         if feats and item["label"] == item["videoId"] and feats.get("label"):
@@ -170,7 +179,7 @@ def main() -> int:
                       f"{p['from']}  ->  {p['to']}")
 
     failed = [i for i in items if i["error"]]
-    return 2 if failed else 0
+    return 3 if misses else 2 if failed else 0
 
 
 if __name__ == "__main__":
