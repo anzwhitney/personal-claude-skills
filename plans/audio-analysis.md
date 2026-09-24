@@ -1,6 +1,7 @@
 # Audio-content analysis for yt-music-playlist
 
-Status: **proposed** (2026-09-24). Companion: `plans/cloud-sessions.md`, which has to run this
+Status: **implemented** on branch `audio-analysis` (2026-09-24). The notes marked
+"Implementation note" record where the build departed from the proposal. Companion: `plans/cloud-sessions.md`, which has to run this
 feature in cloud sessions later.
 
 ## Context
@@ -64,8 +65,12 @@ without the audio dependencies installed.
 ### 1. Dependencies: `requirements-audio.txt` (new)
 
 - `essentia-tensorflow==2.1b6.dev1389`, pinned for the wheel-availability reason above.
-- `yt-dlp>=2026.8`. **Unpinned upper bound** on purpose: YouTube breaks old yt-dlp versions,
-  so preflight runs `pip install -U yt-dlp` when a download fails.
+- `yt-dlp[default,deno]>=2026.8.19`. The deno extra supplies the JS runtime YouTube
+  extraction now needs, from pip, so nothing system-wide is required. **Unpinned upper bound**
+  on purpose: YouTube breaks old yt-dlp versions,
+  so the docs say to run `pip install -U "yt-dlp[default,deno]"` when downloads fail.
+  *Implementation note:* YouTube also returns intermittent 403s that succeed on retry, so
+  `fetch_audio` retries 3× with backoff.
 - Kept separate from `requirements.txt` so the base skill stays light.
 - Install into the existing shared venv (`~/.local/share/yt-music-playlist/venv`, py3.11).
 
@@ -87,12 +92,17 @@ without the audio dependencies installed.
   - `lufs` (integrated), `lra`, `loud_start` / `loud_end` (short-term LUFS over the first and
     last 20s), `loud_contour` (10-point short-term LUFS);
   - `bpm`, `bpm_conf`, `key`, `scale`, `key_strength`, `centroid` (brightness);
+
+  *Implementation note:* `centroid` was dropped. Added `onset_rate` (textural density) and
+  `styles`, the top-5 Discogs styles from the `genre_discogs400` head.
   - `source` (`"full"`, with `"preview"` reserved for the cloud fallback), `analyzer_version`.
 - **Caches:** designed so the cloud plan can move them into the repo with just a path change.
   - `STATE_DIR/audio-features.json` is sorted-key JSON, one track per line, so it diffs
     cleanly.
   - The 1280-d mean effnet embedding goes in a separate `STATE_DIR/audio-embeddings.json`
     (float16, base64) to keep the features file readable.
+
+    *Implementation note:* that file also stores the 400-d style vector.
   - Bumping `ANALYZER_VERSION` invalidates old entries.
 - **Failures:** a failed download or decode returns `None` with a reason. The caller reports
   "unanalyzed" and never blocks.
@@ -105,7 +115,11 @@ without the audio dependencies installed.
 - **Default output:** a compact one-line-per-track table (voice%, arousal/valence, relaxed,
   LUFS start→end, bpm, key) that's cheap in context. `--json` gives the full dicts.
 - **`--similar-to "Artist - Title"`** ranks the other given tracks by embedding cosine
-  similarity. This supports "find Build tracks that feel like X" and matching a reference
+  similarity.
+
+  *Implementation note:* it uses **style-vector** cosine instead. The raw effnet embedding rated
+  nearly everything ~0.7 alike, while style vectors spread 0.1–0.8 and ranked sensibly by
+  ear. This supports "find Build tracks that feel like X" and matching a reference
   track's texture.
 - **`--transitions`** (with `--plan`) prints each adjacent pair's loudness jump
   (end→start LU), arousal delta, tempo ratio and key distance, so Claude can reorder before a
@@ -150,6 +164,22 @@ without the audio dependencies installed.
 - Show you which prior tracks the voice detector would have flagged, to sanity-check its
   false-positive rate, before the thresholds get committed.
 
+*Implementation note (calibration outcome):* per the user, the three **pre-skill** sessions
+were the calibration references: "[OG] Ketamine - revised", "Anz Ketamine - Thunderstorm" and
+"Anz Ketamine - Water".
+
+- **Loudness transitions:** edge-to-edge jumps of ±26 LU are routine in them (fades into quiet
+  intros). The check became `max_loudness_rise_lu`: the next track's opening vs the previous
+  track's overall level, only rises counted, threshold 8 (reference max +9).
+- **Arc:** Builds settle for a few tracks before climbing. The arc check became a
+  rank-correlation trend (`arc_min_correlation` 0.3; references 0.63–0.82) plus a 1.0
+  per-step tolerance.
+- **Peak and Wind-down** don't follow a consistent arc in the references, so they carry none.
+- **Tempo:** ×1.2–1.4 jumps are normal in them, so the tempo check is off.
+- **Voice:** 0.25 flags "Rain Meditation" (51%) and "Swashers" (25%) and lets the CSNY closer
+  through via the exception slot.
+- **Result:** the three references raise 1, 3 and 2 advisories, each a genuine outlier.
+
 ### 7. Docs
 
 - `yt-music-playlist/SKILL.md`: an optional audio step in the workflow.
@@ -172,7 +202,10 @@ without the audio dependencies installed.
 2. `analyze_tracks.py "Max Cooper - Order From Chaos" "Bonobo - Kerala" "Nils Frahm - Says"`
    reproduces the spike numbers. The second run is instant (cache hit), and no audio is left in
    `audio-tmp/`.
-3. `--similar-to` ranks two Max Cooper tracks above Kerala for a Max Cooper reference.
+3. `--similar-to` produces a ranking that sounds right. *Implementation note:* the original
+   "same artist ranks higher" test was wrong. Similarity measures texture: Max Cooper's ambient
+   "Order From Chaos" sits nearest Jon Hopkins' "Emerald Rush" and Stars of the Lid, not his
+   own deep-techno tracks.
 4. Dry-run the most recent ketamine plan with the protocol: audio columns appear, warnings are
    plausible, `--no-audio-check` and protocol-less runs behave exactly as before, and an
    uninstalled essentia produces a one-line "audio analysis unavailable" note, not a crash.
