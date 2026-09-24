@@ -30,7 +30,8 @@ KTM=~/.claude/skills/ketamine-infusion-playlist
 If the shared venv doesn't exist yet, create it and install the shared skill's
 `requirements.txt` **and `requirements-audio.txt`** first (see `yt-music-playlist`'s
 `references/ytmusicapi-guide.md` and `references/audio-analysis.md`). This protocol uses audio
-analysis. Without the audio requirements the dry-run still works but loses its audio checks.
+analysis. Without the audio requirements, the dry-run still checks tracks already in the
+feature cache, but can't analyze new ones.
 
 ## Hard rules
 
