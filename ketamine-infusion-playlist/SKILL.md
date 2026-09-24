@@ -27,7 +27,9 @@ ENGINE=~/.claude/skills/yt-music-playlist/scripts/build_playlist.py
 KTM=~/.claude/skills/ketamine-infusion-playlist
 ```
 If the shared venv doesn't exist yet, create it and install the shared skill's
-`requirements.txt` first (see `yt-music-playlist`'s `references/ytmusicapi-guide.md`).
+`requirements.txt` **and `requirements-audio.txt`** first (see `yt-music-playlist`'s
+`references/ytmusicapi-guide.md` and `references/audio-analysis.md`). This protocol uses audio
+analysis. Without the audio requirements the dry-run still works but loses its audio checks.
 
 ## Hard rules
 
@@ -35,6 +37,11 @@ If the shared venv doesn't exist yet, create it and install the shared skill's
   final track that *starts* at/after 47:00 (a deliberate vocal closer). Enforced by
   `protocol.json`'s `vocal_policy` (mode `block`, exception after 47:00, last slot only) —
   don't rely on curation judgment alone.
+- **No audible voice, not just no lyrics.** `protocol.json`'s `audio_policy` flags any track
+  where a voice is heard in a meaningful share of the audio. That includes wordless vocals,
+  chopped vocal samples and choirs, which the lyrics lookup can't see. A flag is advisory:
+  audition the track, then either replace it or, if the voice is acceptable, add its query to
+  the plan's `vocal_ok`. The same last-slot exception after 47:00 applies.
 - **Timing.** The playlist may run well past 50:00 — the clinician fades the music out around
   then regardless of what's queued. The only hard rule is that no track may *start* at/after
   50:00; only the portion of Wind-down before 50:00 counts toward its length target.
@@ -70,7 +77,20 @@ If the shared venv doesn't exist yet, create it and install the shared skill's
    ambiguous (edits/remixes/features share a title) or you want to sanity-check the vocal
    status of a track before committing it, audition candidates with
    `$PY $(dirname $ENGINE)/search_tracks.py -n 5 "Artist - Title"` rather than guessing from the
-   top search hit. Don't worry about resolving exact runtimes by hand — the next step checks
+   top search hit.
+
+   **Use the audio analysis while curating**, since the protocol cares how tracks *feel*:
+   - `$PY $(dirname $ENGINE)/analyze_tracks.py "Artist - Title" ...` shows voice%, arousal
+     (energy, 1-9), relaxed, loudness, start>end level, bpm, key and styles for candidates.
+   - **Build** should climb in arousal across its ~35 minutes, gradually and without big steps.
+     **Peak** holds the highest arousal. **Wind-down** steps back down.
+   - `--similar-to "<a track that worked>" CANDIDATES...` finds candidates that sound like
+     known-good tracks from `references/curation-notes.md`. Use it when the user asks for a
+     mood ("like the Beach session", "darker", "more water-like").
+   - Once a draft plan exists, `analyze_tracks.py --plan /tmp/ktm-plan.json --transitions`
+     shows each join's loudness, energy, tempo and key change, so tracks can be reordered or
+     swapped before the dry-run.
+   - Uncached tracks take ~15-30s each to analyze. Batch candidates into one call. Don't worry about resolving exact runtimes by hand — the next step checks
    that mechanically. Write the plan to a JSON file, e.g. `/tmp/ktm-plan.json`:
 
    ```json
@@ -94,11 +114,17 @@ If the shared venv doesn't exist yet, create it and install the shared skill's
    timing, and instrumental-rule issues (all per `protocol.json`); and prints a full timeline
    with cumulative start times. Nothing is created yet. The instrumental check makes real
    lyrics-lookup network calls (cached across runs) — pass `--no-lyrics-check` for a faster
-   timing-only iteration pass (the title heuristic still runs).
+   timing-only iteration pass (the title heuristic still runs). With the protocol's
+   `audio_policy`, the timeline also shows each track's audio summary. It adds advisory
+   warnings for audible voice, abrupt loudness/energy/tempo jumps, and Build/Wind-down steps
+   against their rising/falling arc. `--no-audio-check` skips this for timing-only passes.
+   Treat the audio warnings as prompts to listen and weigh up, not hard rules. The mood models
+   are coarse, and a deliberate contrast can be right.
 
 6. **Iterate.** If there are blocking issues (not-found, already-used, a track starting at/after
    50:00, confirmed vocals, or total under 50:00) or the timeline doesn't look right, revise the
-   plan file and re-run step 5. Show the user the timeline before creating anything.
+   plan file and re-run step 5. Resolve or consciously accept each audio advisory, and mention
+   any accepted ones to the user when showing the timeline. Show the user the timeline before creating anything.
 
 7. **Create.** Once the user approves, run the same command without `--dry-run`. This creates
    an **unlisted** playlist titled with the date (per `protocol.json`'s `title_prefix` /
