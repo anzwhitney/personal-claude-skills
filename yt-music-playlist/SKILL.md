@@ -30,13 +30,13 @@ requests: uncached tracks cost ~15-30s each.
 - `--plan plan.json --transitions` reports loudness, energy, tempo and key changes at each join.
 
 A protocol can also enforce this in the dry-run via `audio_policy` (advisory warnings only).
-See "Audio analysis" in `references/ytmusicapi-guide.md` for features, caveats and the schema.
+See `references/audio-analysis.md` for features, caveats and the schema.
 
 ## Optional protocol config
 
 A specific playlist format (fixed segment timing, artist-diversity caps, an instrumental-only
 rule, etc.) is expressed as a `--protocol PATH` JSON config, not code — see
-`references/ytmusicapi-guide.md` for the full schema. Without `--protocol`, this skill builds
+`references/protocol-config.md` for the full schema. Without `--protocol`, this skill builds
 an unconstrained flat playlist: any phase names, no timing/diversity checks, vocal detection
 off. A consuming skill (e.g. ketamine-infusion-playlist) supplies its own protocol file and
 invokes this skill's `build_playlist.py` with it.
@@ -107,7 +107,7 @@ state — `exclude-playlists.json` (prior playlists whose tracks should never be
 `exclude-tracks.json` (individually banned tracks). Either pass it as `--exclude-dir DIR` to
 every command in the workflow above (steps 3, 5, 7), or — for a consuming skill that always
 wants this on — bake it into that skill's `--protocol` config as `"exclude_dir"` so it never has
-to pass `--exclude-dir` itself (see `references/ytmusicapi-guide.md`); `--exclude-dir` on the
+to pass `--exclude-dir` itself (see `references/exclude-lists.md`); `--exclude-dir` on the
 command line overrides a protocol's value if both are given. With an exclude-dir in effect,
 from either source:
 
@@ -127,5 +127,9 @@ from either source:
   that records the playlist in the exclude-list so its tracks aren't reused in a future
   playlist. Do not finalize on the user's behalf just because a create or sync succeeded.
 
-For full ytmusicapi call details (auth setup, search/playlist API shapes, gotchas) and the
-`--protocol` config schema, see `references/ytmusicapi-guide.md`.
+References (read only the one the task needs):
+- `references/ytmusicapi-guide.md`: install, auth, API call shapes and gotchas, unavailable tracks.
+- `references/protocol-config.md`: the `--protocol` config schema.
+- `references/exclude-lists.md`: no-reuse tracking with `--exclude-dir`.
+- `references/vocal-detection.md`: how the lyrics and title checks work, and their limits.
+- `references/audio-analysis.md`: audio features, install, cost and the `audio_policy` keys.

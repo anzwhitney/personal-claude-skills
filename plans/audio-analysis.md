@@ -183,7 +183,8 @@ were the calibration references: "[OG] Ketamine - revised", "Anz Ketamine - Thun
 ### 7. Docs
 
 - `yt-music-playlist/SKILL.md`: an optional audio step in the workflow.
-- `references/ytmusicapi-guide.md`: an "Audio analysis" section covering install, cache,
+- `references/audio-analysis.md` (first written as a section of `ytmusicapi-guide.md`, then
+  split out with the other non-API topics): covering install, cache,
   `audio_policy` schema, caveats (coarse mood models, yt-dlp breakage, audio never retained)
   and model licensing (Essentia models are CC BY-NC-SA, fine for personal use).
 

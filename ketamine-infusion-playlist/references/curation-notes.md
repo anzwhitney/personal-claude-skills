@@ -23,7 +23,7 @@ avoid repeating too heavily.
   47:00. Enforced automatically by the shared `yt-music-playlist` skill's `build_playlist.py`,
   driven by this skill's `protocol.json` `vocal_policy` (confirmed lyrics text = hard block;
   `feat.`/`ft.`/`featuring` in the title = flag) — see that skill's
-  `references/ytmusicapi-guide.md` for how the check works and its known false-negative risk.
+  `references/vocal-detection.md` for how the check works and its known false-negative risk.
 - If a query's version is ambiguous (an edit/remix/feature shares a title with the plain track),
   disambiguate with the shared skill's `scripts/search_tracks.py -n 5 "Artist - Title"` before
   adding it to a plan rather than trusting the top search hit.

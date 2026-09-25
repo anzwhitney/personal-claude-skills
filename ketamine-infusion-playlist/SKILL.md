@@ -125,6 +125,6 @@ If the shared venv doesn't exist yet, create it and install the shared skill's
     after a session, append a short note to `references/curation-notes.md` for next time (and
     consider whether a disliked track belongs in the permanent track exclude-list, step 3).
 
-For full ytmusicapi call details (auth setup, search/playlist API shapes, gotchas) and the
-`protocol.json` schema, see the shared `yt-music-playlist` skill's
-`references/ytmusicapi-guide.md`.
+For ytmusicapi call details (auth setup, API shapes, gotchas), see the shared
+`yt-music-playlist` skill's `references/ytmusicapi-guide.md`; for the `protocol.json` schema,
+its `references/protocol-config.md`.

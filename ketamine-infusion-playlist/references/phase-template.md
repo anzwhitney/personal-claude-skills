@@ -9,7 +9,7 @@ General rules:
   track that *starts* at/after 47:00 (a deliberate vocal closer). Enforced mechanically by the
   shared `yt-music-playlist` skill's `build_playlist.py` (combined lyrics lookup + title
   heuristic), driven by this skill's `protocol.json` (`vocal_policy`) — see
-  `yt-music-playlist`'s `references/ytmusicapi-guide.md` for how the check works.
+  `yt-music-playlist`'s `references/vocal-detection.md` for how the check works.
 - **Timing:** the playlist may run well past 50:00 — content after that point doesn't matter,
   since the supervising clinician fades the music out around then regardless of what's queued.
   The only hard rule is that no track may *start* at/after 50:00. Wind-down's length is measured

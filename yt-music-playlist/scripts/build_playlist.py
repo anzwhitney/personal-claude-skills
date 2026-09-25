@@ -9,7 +9,7 @@ report a timeline, and create/sync the playlist once approved.
 
 All protocol-specific policy (segment names + targets, tolerance, artist
 diversity caps, vocal-detection mode, total-length boundary) comes from an
-optional --protocol JSON config -- see references/ytmusicapi-guide.md for
+optional --protocol JSON config -- see references/protocol-config.md for
 the schema. Without --protocol, the plan is built as an unconstrained flat
 playlist: any phase/segment names are accepted, no timing or diversity
 checks run, and vocal detection is off.
@@ -21,7 +21,7 @@ it on when the user asks not to repeat tracks across playlists, or bake a
 fixed "exclude_dir" into a --protocol so a consumer never has to pass
 --exclude-dir itself (e.g. ketamine-infusion-playlist always does this).
 --exclude-dir on the command line overrides a protocol's "exclude_dir" if
-both are given. See "Exclude-lists" in references/ytmusicapi-guide.md.
+both are given. See references/exclude-lists.md.
 
 Plan file format (JSON):
 {
@@ -106,7 +106,7 @@ DEFAULT_PROTOCOL = {
 }
 
 # Filled in under a protocol's "audio_policy" block; a threshold set to None
-# turns that check off. See "Audio analysis" in references/ytmusicapi-guide.md.
+# turns that check off. See references/audio-analysis.md.
 AUDIO_POLICY_DEFAULTS = {
     "voice_flag_frac": 0.25,
     "max_loudness_rise_lu": None,
