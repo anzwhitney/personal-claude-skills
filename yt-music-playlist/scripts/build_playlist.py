@@ -297,7 +297,7 @@ def _apply_audio_checks(
     arc runs against the protocol's per-segment "arc". Attaches each track's
     features as track["audio"] for the timeline. Never produces a blocking
     issue -- these are listening aids, not rules."""
-    from audio import FeatureSource, audio_unavailable_reason, load_voice_verdicts, transition
+    from audio import FeatureSource, audio_unavailable_reason, transition, voice_verdict
 
     all_tracks = [(phase, track) for phase in resolved_phases for track in phase["tracks"]]
     if not all_tracks:
@@ -322,11 +322,11 @@ def _apply_audio_checks(
 
     last_track = all_tracks[-1][1]
     voice_frac = audio_policy.get("voice_flag_frac")
-    verdicts = load_voice_verdicts()
     if voice_frac is not None:
         for phase, track in all_tracks:
             feats = track["audio"]
-            verdict = (verdicts.get(track["videoId"]) or {}).get("verdict")
+            verdict = voice_verdict(track["videoId"], f"{track['artist']} - {track['title']}",
+                                    track["duration_seconds"])
             if (track.get("query") in vocal_ok_queries or verdict == "ok"
                     or _in_vocal_exception_slot(track, last_track, vocal_policy)):
                 continue

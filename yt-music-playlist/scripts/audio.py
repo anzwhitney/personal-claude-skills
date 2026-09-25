@@ -44,7 +44,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from ytm import STATE_DIR, ensure_state_dir
+from ytm import STATE_DIR, ensure_state_dir, label_key, same_length
 
 ANALYZER_VERSION = 2
 
@@ -187,8 +187,25 @@ def load_voice_verdicts() -> dict[str, dict[str, str]]:
     return _load_json(VOICE_VERDICTS_FILE)
 
 
-def voice_verdict(video_id: str) -> str | None:
-    return (load_voice_verdicts().get(video_id) or {}).get("verdict")
+def voice_verdict(video_id: str, label: str | None = None,
+                  duration_seconds: int | None = None) -> str | None:
+    """The user's verdict on a track's voice. Given the track's "Artist -
+    Title" label, falls back to a verdict on another upload of the same
+    recording (same ytm.label_key() and length), so one listen covers both."""
+    verdicts = load_voice_verdicts()
+    if video_id in verdicts:
+        return verdicts[video_id].get("verdict")
+    if not label:
+        return None
+    key = label_key(label)
+    same_key = [vid for vid, v in verdicts.items() if label_key(v.get("label") or "") == key]
+    if not same_key:
+        return None
+    features = load_features_cache()
+    for vid in same_key:
+        if same_length((features.get(vid) or {}).get("duration"), duration_seconds):
+            return verdicts[vid].get("verdict")
+    return None
 
 
 def set_voice_verdict(video_id: str, verdict: str | None, label: str | None = None) -> None:
