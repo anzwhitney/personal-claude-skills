@@ -31,7 +31,9 @@ Usage:
     python3 analyze_tracks.py --mark-voice ok "Yosi Horikawa - Tono"   # after listening
 
 Positional arguments are "Artist - Title" queries, or bare 11-character
-videoIds. With --plan, tracks are taken from the plan in order (phase
+videoIds. argparse reads a videoId that starts with "-" as an option, so put
+such ids after "--" (`analyze_tracks.py -- -9Fa_E9T8nk`), or attach them to
+their option with "=" (`--similar-to=-9Fa_E9T8nk`). With --plan, tracks are taken from the plan in order (phase
 headings included); --transitions then also reports each adjacent pair.
 """
 from __future__ import annotations
