@@ -67,6 +67,15 @@ class UsedTracksTest(unittest.TestCase):
     def test_remix_does_not_match(self):
         self.assertIsNone(self.used.match("zzzzzzzzzzz", "Max Cooper", "Repetition (Non Square Remix)", 235))
 
+    def test_any_version_of_a_banned_track_is_a_version(self):
+        self.used.add("m7XUWf5BBt4", "Max Cooper", "Repetition", None, "track exclude-list", any_version=True)
+        self.assertEqual(self.used.match("m7XUWf5BBt4", "x", "y")[0], "same")
+        self.assertEqual(self.used.match("TcOmno-7DaY", "Max Cooper", "Repetition", 351)[0], "same")
+        kind, entry = self.used.match("TcOmno-7DaY", "Max Cooper", "Repetition (Edit)", 237)
+        self.assertEqual((kind, entry["source"]), ("version", "track exclude-list"))
+        self.assertIsNone(self.used.match("zzzzzzzzzzz", "Max Cooper", "Repetitions", 351))
+        self.assertIsNone(self.used.without({"m7XUWf5BBt4"}).match(None, "Max Cooper", "Repetition (Edit)"))
+
     def test_playlist_and_resolved_track_shapes(self):
         used = UsedTracks()
         used.add_track({"videoId": "a" * 11, "title": "Low Sun", "duration_seconds": 189,

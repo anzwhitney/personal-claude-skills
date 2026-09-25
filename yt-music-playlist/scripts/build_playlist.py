@@ -477,7 +477,11 @@ def build_timeline(
             if hit and hit[0] == "same":
                 issues.append(f"[{name}] ALREADY USED (skipped): {_label(track, at=False)}{_where_used(track, hit[1])}")
                 continue
-            if hit:
+            if hit and hit[1]["source"] == "track exclude-list":
+                issues.append(
+                    f"[{name}] other version of a banned track {hit[1]['label']!r} (listen; it may be "
+                    f"quite different, or ban it too with --add-exclude-track): {_label(track, at=False)}")
+            elif hit:
                 issues.append(
                     f"[{name}] possible other version of a used track (length {format_mmss(track['duration_seconds'])} "
                     f"vs {format_mmss(hit[1]['duration_seconds'])}; listen): {_label(track, at=False)}"

@@ -23,6 +23,9 @@ removed:
 - The same key at a different length gives an advisory "possible other version of a used
   track", not a block, since it may be a different cut.
 - Entries without a stored length (older exclude-track entries) match any length.
+- For banned tracks (`exclude-tracks.json`), *any* other version of the title (remix, edit,
+  live, ...) gives an advisory "other version of a banned track". It may be substantially
+  different, so listen, and ban it too with `--add-exclude-track` if it's no better.
 - The dry-run names which used track and playlist matched. Two entries in one plan that are
   the same recording are flagged as `DUPLICATE`.
 - A re-titled reissue still slips through: catching it would need audio fingerprinting. Without an exclude-dir, `--plan`/`--sync` skip this check

@@ -102,20 +102,27 @@ class UsedTracks:
     match() returns ("same", entry) for the same videoId, or the same
     track_key() at the same length; ("version", entry) for the same key at a
     different length, which is worth a listen but may be a different cut;
-    or None.
+    or None. Entries added with any_version=True (banned tracks) also give
+    ("version", entry) for any other version of the title: a remix or edit
+    can be substantially different, so it's for the user to judge.
     """
 
     def __init__(self) -> None:
         self.by_id: dict[str, dict[str, Any]] = {}
         self.by_key: dict[str, list[dict[str, Any]]] = {}
+        self.by_base: dict[str, list[dict[str, Any]]] = {}
 
     def add(self, video_id: str | None, artist: str, title: str,
-            duration_seconds: int | None = None, source: str | None = None) -> None:
+            duration_seconds: int | None = None, source: str | None = None,
+            any_version: bool = False) -> None:
         entry = {"videoId": video_id, "label": f"{artist} - {title}",
                  "duration_seconds": duration_seconds, "source": source}
         if video_id:
             self.by_id.setdefault(video_id, entry)
-        self.by_key.setdefault(track_key(artist, title), []).append(entry)
+        key = track_key(artist, title)
+        self.by_key.setdefault(key, []).append(entry)
+        if any_version:
+            self.by_base.setdefault(_base_key(key), []).append(entry)
 
     def add_track(self, track: dict[str, Any], source: str | None = None) -> None:
         """Add a ytmusicapi playlist track, or a resolve_track() result."""
@@ -131,10 +138,11 @@ class UsedTracks:
         """A copy minus every entry with one of these videoIds (for --sync,
         where a playlist's own tracks aren't "used" by itself)."""
         copy = UsedTracks()
-        for key, entries in self.by_key.items():
-            kept = [e for e in entries if e["videoId"] not in video_ids]
-            if kept:
-                copy.by_key[key] = kept
+        for mine, theirs in ((self.by_key, copy.by_key), (self.by_base, copy.by_base)):
+            for key, entries in mine.items():
+                kept = [e for e in entries if e["videoId"] not in video_ids]
+                if kept:
+                    theirs[key] = kept
         copy.by_id = {v: e for v, e in self.by_id.items() if v not in video_ids}
         return copy
 
@@ -142,11 +150,18 @@ class UsedTracks:
               duration_seconds: int | None = None) -> tuple[str, dict[str, Any]] | None:
         if video_id and video_id in self.by_id:
             return "same", self.by_id[video_id]
-        entries = self.by_key.get(track_key(artist, title), [])
+        key = track_key(artist, title)
+        entries = self.by_key.get(key, [])
         for entry in entries:
             if same_length(entry["duration_seconds"], duration_seconds):
                 return "same", entry
+        entries = entries or self.by_base.get(_base_key(key), [])
         return ("version", entries[0]) if entries else None
+
+
+def _base_key(key: str) -> str:
+    """A track_key() without its version tags."""
+    return key.rpartition("|")[0]
 
 
 # --- Exclude lists (per-consumer, directory passed in by caller) ---
@@ -235,11 +250,13 @@ def get_used_tracks(client, exclude_dir: Path | str) -> UsedTracks:
     """Union of (a) tracks in every excluded playlist and (b) the permanent
     per-track exclude list, matched by videoId or by recording (see
     UsedTracks). This is what playlist-building should check against.
-    Exclude-track entries without a stored length match any length."""
+    Exclude-track entries without a stored length match any length, and any
+    other version of a banned title is an advisory match."""
     used = get_excluded_playlist_tracks(client, exclude_dir)
     for e in load_exclude_tracks(exclude_dir):
         artist, _, title = e.get("name", "").partition(" - ")
-        used.add(e.get("videoId"), artist, title, e.get("duration_seconds"), "track exclude-list")
+        used.add(e.get("videoId"), artist, title, e.get("duration_seconds"), "track exclude-list",
+                 any_version=True)
     return used
 
 
