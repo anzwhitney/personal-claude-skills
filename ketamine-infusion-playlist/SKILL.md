@@ -110,9 +110,13 @@ feature cache, but can't analyze new ones.
    - Uncached tracks take ~15-30s each to analyze. Batch candidates into one call. Don't worry about resolving exact runtimes by hand — the next step checks
    that mechanically. Write the plan to a JSON file, e.g. `/tmp/ktm-plan.json`:
 
+   Pick `<theme>` from the playlist's dominant texture or mood (e.g. "Water", "Thunderstorm",
+   matching the style of past sessions in `curation-notes.md`), not a date — the user doesn't
+   make one-off playlists per session, so a date or "Session" in the title is misleading.
+
    ```json
    {
-     "title": "Ketamine Session — <today's date>",
+     "title": "Ketamine — <theme>",
      "phases": [
        {"name": "Build", "tracks": ["Artist - Title", "..."]},
        {"name": "Peak", "tracks": ["Max Cooper - ...", "..."]},
@@ -144,8 +148,8 @@ feature cache, but can't analyze new ones.
    any accepted ones to the user when showing the timeline. Show the user the timeline before creating anything.
 
 7. **Create.** Once the user approves, run the same command without `--dry-run`. This creates
-   an **unlisted** playlist titled with the date (per `protocol.json`'s `title_prefix` /
-   `privacy_status`) and adds the resolved tracks in phase order. **It is deliberately NOT added
+   an **unlisted** playlist titled per the plan's `title` (`protocol.json`'s `privacy_status`
+   controls visibility) and adds the resolved tracks in phase order. **It is deliberately NOT added
    to the exclude-list yet** — a successful create doesn't mean the user is done, since they
    need to listen to it first. Report the playlist URL and final timeline back to the user, and
    tell them the next three steps.
