@@ -190,9 +190,9 @@ def remove_from_exclude_list(exclude_dir: Path | str, playlist_ids: list[str]) -
     return entries
 
 
-def get_excluded_video_ids(client, exclude_dir: Path | str) -> set[str]:
-    """Union the videoIds of every playlist in the exclude-list, fetched live."""
-    excluded: set[str] = set()
+def get_excluded_playlist_tracks(client, exclude_dir: Path | str) -> UsedTracks:
+    """Every track in the exclude-list's playlists, fetched live."""
+    used = UsedTracks()
     for entry in load_exclude_list(exclude_dir):
         try:
             playlist = client.get_playlist(entry["id"], limit=None)
@@ -201,45 +201,46 @@ def get_excluded_video_ids(client, exclude_dir: Path | str) -> set[str]:
                   f"({entry.get('name', '?')}): {exc}")
             continue
         for track in playlist.get("tracks", []):
-            vid = track.get("videoId")
-            if vid:
-                excluded.add(vid)
-    return excluded
+            used.add_track(track, source=entry.get("name") or entry["id"])
+    return used
 
 
 # --- Permanent per-track exclusion list (tracks banned regardless of playlist) ---
 
-def load_exclude_tracks(exclude_dir: Path | str) -> list[dict[str, str]]:
+def load_exclude_tracks(exclude_dir: Path | str) -> list[dict[str, Any]]:
     f = _exclude_tracks_file(exclude_dir)
     if not f.exists():
         return []
     return json.loads(f.read_text())
 
 
-def save_exclude_tracks(exclude_dir: Path | str, entries: list[dict[str, str]]) -> None:
+def save_exclude_tracks(exclude_dir: Path | str, entries: list[dict[str, Any]]) -> None:
     Path(exclude_dir).mkdir(parents=True, exist_ok=True)
     _exclude_tracks_file(exclude_dir).write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n")
 
 
-def add_to_exclude_tracks(exclude_dir: Path | str, video_id: str, name: str) -> list[dict[str, str]]:
+def add_to_exclude_tracks(exclude_dir: Path | str, video_id: str, name: str,
+                          duration_seconds: int | None = None) -> list[dict[str, Any]]:
     entries = load_exclude_tracks(exclude_dir)
     if not any(e["videoId"] == video_id for e in entries):
-        entries.append({"videoId": video_id, "name": name})
+        entry: dict[str, Any] = {"videoId": video_id, "name": name}
+        if duration_seconds:
+            entry["duration_seconds"] = duration_seconds
+        entries.append(entry)
         save_exclude_tracks(exclude_dir, entries)
     return entries
 
 
-def get_excluded_track_video_ids(exclude_dir: Path | str) -> set[str]:
-    """videoIds from the permanent per-track exclude file. No network needed."""
-    return {e["videoId"] for e in load_exclude_tracks(exclude_dir) if e.get("videoId")}
-
-
-def get_all_excluded_video_ids(client, exclude_dir: Path | str) -> set[str]:
+def get_used_tracks(client, exclude_dir: Path | str) -> UsedTracks:
     """Union of (a) tracks in every excluded playlist and (b) the permanent
-    per-track exclude list. This is what playlist-building should check
-    against; get_excluded_video_ids() stays playlist-only for callers (like
-    --sync) that need to subtract out a specific playlist's own tracks."""
-    return get_excluded_video_ids(client, exclude_dir) | get_excluded_track_video_ids(exclude_dir)
+    per-track exclude list, matched by videoId or by recording (see
+    UsedTracks). This is what playlist-building should check against.
+    Exclude-track entries without a stored length match any length."""
+    used = get_excluded_playlist_tracks(client, exclude_dir)
+    for e in load_exclude_tracks(exclude_dir):
+        artist, _, title = e.get("name", "").partition(" - ")
+        used.add(e.get("videoId"), artist, title, e.get("duration_seconds"), "track exclude-list")
+    return used
 
 
 # --- Instrumental/vocal detection (optional, policy-gated by the caller) ---

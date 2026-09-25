@@ -80,9 +80,10 @@ from ytm import (
     add_to_exclude_list,
     add_to_exclude_tracks,
     check_vocals,
+    UsedTracks,
     format_mmss,
-    get_all_excluded_video_ids,
     get_client,
+    get_used_tracks,
     is_likely_vocal_title,
     load_exclude_list,
     load_exclude_tracks,
@@ -119,7 +120,7 @@ AUDIO_POLICY_DEFAULTS = {
     "playback_normalization_lufs": -14.0,
 }
 
-BLOCKING_MARKERS = ("NOT FOUND", "ALREADY USED", "TOTAL", "STARTS AT/AFTER BOUNDARY", "HAS VOCALS")
+BLOCKING_MARKERS = ("NOT FOUND", "ALREADY USED", "DUPLICATE", "TOTAL", "STARTS AT/AFTER BOUNDARY", "HAS VOCALS")
 
 
 def load_protocol(path: str | None) -> dict:
@@ -196,7 +197,7 @@ def cmd_add_exclude_track(client, exclude_dir: str, queries: list[str]) -> int:
             print(f"NOT FOUND (not added): {q!r}")
             continue
         name = f"{track['artist']} - {track['title']}"
-        add_to_exclude_tracks(exclude_dir, track["videoId"], name)
+        add_to_exclude_tracks(exclude_dir, track["videoId"], name, track.get("duration_seconds"))
         print(f"Added to track exclude-list: {track['videoId']} ({name!r})")
     return 0
 
@@ -407,13 +408,19 @@ def _label(track: dict, at: bool = True) -> str:
     return f"{label} at {format_mmss(track['start_seconds'])}" if at else label
 
 
+def _where_used(track: dict, entry: dict) -> str:
+    """Say which used track a match came from, when it isn't obvious."""
+    other = "" if entry["videoId"] == track["videoId"] else f"same recording as {entry['label']!r} "
+    return f" ({other}{'on' if entry['source'] == 'track exclude-list' else 'in'} {entry['source']})"
+
+
 def build_timeline(
     client,
     plan: dict,
     protocol: dict,
     exclude_dir: str | None = None,
     check_lyrics: bool = True,
-    excluded_ids: set[str] | None = None,
+    used: UsedTracks | None = None,
     check_audio: bool = True,
 ) -> tuple[list[dict], list[str]]:
     """Resolve every track in the plan against a protocol. Returns
@@ -425,14 +432,16 @@ def build_timeline(
     hard "no track may start at/after this" boundary; content past it is
     otherwise unconstrained.
 
-    excluded_ids defaults to every excluded playlist/track under exclude_dir,
-    fetched live, or an empty set if exclude_dir is None (no-reuse tracking is
-    opt-in). Pass excluded_ids explicitly (e.g. with a playlist's own tracks
-    subtracted out) when validating an edit to a playlist that is itself
-    already excluded, as --sync does.
+    used defaults to every excluded playlist/track under exclude_dir, fetched
+    live, or nothing if exclude_dir is None (no-reuse tracking is opt-in).
+    Pass it explicitly (e.g. with a playlist's own tracks taken out) when
+    validating an edit to a playlist that is itself already excluded, as
+    --sync does. Tracks match by videoId or by recording (ytm.UsedTracks), so
+    another upload of a used track is caught too.
     """
-    if excluded_ids is None:
-        excluded_ids = get_all_excluded_video_ids(client, exclude_dir) if exclude_dir else set()
+    if used is None:
+        used = get_used_tracks(client, exclude_dir) if exclude_dir else UsedTracks()
+    in_plan = UsedTracks()
     segments = protocol.get("segments") or []
     has_fixed_segments = bool(segments)
     segment_configs = {s["name"]: s for s in segments}
@@ -463,9 +472,22 @@ def build_timeline(
             if track is None:
                 issues.append(f"[{name}] NOT FOUND: {query!r}")
                 continue
-            if track["videoId"] in excluded_ids:
-                issues.append(f"[{name}] ALREADY USED (skipped): {track['artist']} - {track['title']!r}")
+            identity = (track["videoId"], track["artist"], track["title"], track["duration_seconds"])
+            hit = used.match(*identity)
+            if hit and hit[0] == "same":
+                issues.append(f"[{name}] ALREADY USED (skipped): {_label(track, at=False)}{_where_used(track, hit[1])}")
                 continue
+            if hit:
+                issues.append(
+                    f"[{name}] possible other version of a used track (length {format_mmss(track['duration_seconds'])} "
+                    f"vs {format_mmss(hit[1]['duration_seconds'])}; listen): {_label(track, at=False)}"
+                    f"{_where_used(track, hit[1])}")
+            dup = in_plan.match(*identity)
+            if dup and dup[0] == "same":
+                issues.append(f"[{name}] DUPLICATE in plan (skipped): {_label(track, at=False)} "
+                              f"(same recording as {dup[1]['label']!r} in {dup[1]['source']})")
+                continue
+            in_plan.add_track(track, source=name)
 
             artist = track["artist"]
             if diversity and not diversity_exempt:
@@ -631,9 +653,9 @@ def cmd_sync(client, playlist_id: str, plan_path: str, protocol: dict, exclude_d
     current = client.get_playlist(playlist_id, limit=None)
     current_tracks = current.get("tracks", [])
     own_ids = {t["videoId"] for t in current_tracks if t.get("videoId")}
-    excluded_ids = (get_all_excluded_video_ids(client, exclude_dir) - own_ids) if exclude_dir else set()
+    used = get_used_tracks(client, exclude_dir).without(own_ids) if exclude_dir else UsedTracks()
 
-    resolved_phases, issues = build_timeline(client, plan, protocol, exclude_dir=exclude_dir, check_lyrics=check_lyrics, excluded_ids=excluded_ids, check_audio=check_audio)
+    resolved_phases, issues = build_timeline(client, plan, protocol, exclude_dir=exclude_dir, check_lyrics=check_lyrics, used=used, check_audio=check_audio)
     print_timeline(resolved_phases, issues)
 
     blocking = blocking_issues(issues)
