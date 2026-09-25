@@ -33,13 +33,11 @@ as measured on 2026-09-24:
 - **Wind-down opens with a clear step out of the Max Cooper run:** "Small Giraffes" in OG,
   "Rain Meditation" in Thunderstorm, "Calming Rain" in Water. Its energy then varies rather
   than steadily falling, so it has no arc.
-- **Peak's goal is *immersive*, not intense, and no measured feature captures immersion.**
-  Tested 2026-09-24 on the reference sessions plus the Beach session:
-  - Similarity to Max Cooper's style profile doesn't mark Peak picks. Build tracks scored
-    *more* Max-Cooper-like (0.76) than non-Max-Cooper Peak picks (0.53), and "Small
-    Giraffes" / "Your Hand in Mine" scored near zero.
-  - Nothing else separates Peak from Build either: duration, loudness range, swell, arousal,
-    mood, onset density.
+- **Peak's goal is *immersive*, not intense, and no measured feature captures immersion yet.**
+  Every reference Peak track is Max Cooper, so the reference sessions can't separate
+  "immersive" from "sounds like Max Cooper". An equally immersive track by another artist
+  would give something to compare against: if the user finds one, analyze it alongside the
+  Max Cooper Peak tracks and look for shared features.
 
   So choose Peak tracks by ear, with "Max Cooper or similar" as the anchor. Use
   `analyze_tracks.py --similar-to` against tracks the user has called immersive only to
