@@ -13,6 +13,8 @@ rather than this module hard-coding one.
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +36,117 @@ def get_client():
             f"No auth file at {AUTH_FILE}. Run scripts/setup_auth.py first."
         )
     return YTMusic(str(AUTH_FILE))
+
+
+# --- Track identity across videoIds ---
+# The same recording can appear under several videoIds (an album track and
+# its single, a re-upload), so "already used" can't rely on videoId alone.
+# track_key() names a recording by its first artist, base title and version
+# tags; lengths that differ by more than SAME_LENGTH_TOLERANCE_S mark a
+# different cut of the same name (an unlabeled edit or live take).
+SAME_LENGTH_TOLERANCE_S = 5
+_QUALIFIER_RE = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
+_FEAT_RE = re.compile(r"\s(?:feat\.?|ft\.?|featuring)\s.*$", re.IGNORECASE)
+# Qualifiers that label a release, not a different recording.
+_IGNORED_QUALIFIER_RE = re.compile(
+    r"^(?:(?:\d{4} )?(?:digital(?:ly)? )?remaster(?:ed)?(?: \d{4})?(?: version)?"
+    r"|album version|original mix|official (?:music )?(?:audio|video)|audio)$")
+
+
+def _fold(text: str) -> str:
+    """Lowercase, strip accents and punctuation, collapse whitespace."""
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    text = text.casefold().replace("&", " and ")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
+def track_key(artist: str, title: str) -> str:
+    """Identity of a recording: "artist|base title|version tags".
+
+    Bracketed qualifiers, a trailing " - qualifier" and a "feat. X" clause
+    become version tags, so "Origins (Extended)" and "Repetition (feat. James
+    Yorkston)" stay distinct from "Origins" and "Repetition", while
+    "Flown - Remastered 2021" matches "Flown". Only the first artist counts,
+    because YouTube Music lists guest artists inconsistently between releases.
+    """
+    tags = []
+    for m in _QUALIFIER_RE.finditer(title):
+        tags.append(m.group(1) if m.group(1) is not None else m.group(2))
+    base = _QUALIFIER_RE.sub(" ", title)
+    base, dash, suffix = base.partition(" - ")
+    if dash:
+        tags.append(suffix)
+    feat = _FEAT_RE.search(base)
+    if feat:
+        tags.append(feat.group(0))
+        base = base[:feat.start()]
+    folded = sorted({t for t in map(_fold, tags) if t and not _IGNORED_QUALIFIER_RE.match(t)})
+    first_artist = re.split(r",| & ", artist, maxsplit=1)[0]
+    return f"{_fold(first_artist)}|{_fold(base)}|{','.join(folded)}"
+
+
+def label_key(label: str) -> str:
+    """track_key() of an "Artist - Title" label (split at the first " - ")."""
+    artist, _, title = label.partition(" - ")
+    return track_key(artist, title)
+
+
+def same_length(a: int | None, b: int | None) -> bool:
+    """True if two durations match, or either is unknown."""
+    return a is None or b is None or abs(a - b) <= SAME_LENGTH_TOLERANCE_S
+
+
+class UsedTracks:
+    """Tracks that must not be reused, matched by videoId or by recording.
+
+    match() returns ("same", entry) for the same videoId, or the same
+    track_key() at the same length; ("version", entry) for the same key at a
+    different length, which is worth a listen but may be a different cut;
+    or None.
+    """
+
+    def __init__(self) -> None:
+        self.by_id: dict[str, dict[str, Any]] = {}
+        self.by_key: dict[str, list[dict[str, Any]]] = {}
+
+    def add(self, video_id: str | None, artist: str, title: str,
+            duration_seconds: int | None = None, source: str | None = None) -> None:
+        entry = {"videoId": video_id, "label": f"{artist} - {title}",
+                 "duration_seconds": duration_seconds, "source": source}
+        if video_id:
+            self.by_id.setdefault(video_id, entry)
+        self.by_key.setdefault(track_key(artist, title), []).append(entry)
+
+    def add_track(self, track: dict[str, Any], source: str | None = None) -> None:
+        """Add a ytmusicapi playlist track, or a resolve_track() result."""
+        if "artist" in track:
+            artist = track["artist"]
+        else:
+            artists = track.get("artists") or []
+            artist = artists[0]["name"] if artists else "Unknown"
+        self.add(track.get("videoId"), artist, track.get("title") or "",
+                 track.get("duration_seconds"), source)
+
+    def without(self, video_ids: set[str]) -> "UsedTracks":
+        """A copy minus every entry with one of these videoIds (for --sync,
+        where a playlist's own tracks aren't "used" by itself)."""
+        copy = UsedTracks()
+        for key, entries in self.by_key.items():
+            kept = [e for e in entries if e["videoId"] not in video_ids]
+            if kept:
+                copy.by_key[key] = kept
+        copy.by_id = {v: e for v, e in self.by_id.items() if v not in video_ids}
+        return copy
+
+    def match(self, video_id: str | None, artist: str, title: str,
+              duration_seconds: int | None = None) -> tuple[str, dict[str, Any]] | None:
+        if video_id and video_id in self.by_id:
+            return "same", self.by_id[video_id]
+        entries = self.by_key.get(track_key(artist, title), [])
+        for entry in entries:
+            if same_length(entry["duration_seconds"], duration_seconds):
+                return "same", entry
+        return ("version", entries[0]) if entries else None
 
 
 # --- Exclude lists (per-consumer, directory passed in by caller) ---
