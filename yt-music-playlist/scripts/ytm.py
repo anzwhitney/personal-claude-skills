@@ -13,6 +13,8 @@ rather than this module hard-coding one.
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +36,132 @@ def get_client():
             f"No auth file at {AUTH_FILE}. Run scripts/setup_auth.py first."
         )
     return YTMusic(str(AUTH_FILE))
+
+
+# --- Track identity across videoIds ---
+# The same recording can appear under several videoIds (an album track and
+# its single, a re-upload), so "already used" can't rely on videoId alone.
+# track_key() names a recording by its first artist, base title and version
+# tags; lengths that differ by more than SAME_LENGTH_TOLERANCE_S mark a
+# different cut of the same name (an unlabeled edit or live take).
+SAME_LENGTH_TOLERANCE_S = 5
+_QUALIFIER_RE = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
+_FEAT_RE = re.compile(r"\s(?:feat\.?|ft\.?|featuring)\s.*$", re.IGNORECASE)
+# Qualifiers that label a release, not a different recording.
+_IGNORED_QUALIFIER_RE = re.compile(
+    r"^(?:(?:\d{4} )?(?:digital(?:ly)? )?remaster(?:ed)?(?: \d{4})?(?: version)?"
+    r"|album version|original mix|official (?:music )?(?:audio|video)|audio)$")
+
+
+def _fold(text: str) -> str:
+    """Lowercase, strip accents and punctuation, collapse whitespace."""
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    text = text.casefold().replace("&", " and ")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
+def track_key(artist: str, title: str) -> str:
+    """Identity of a recording: "artist|base title|version tags".
+
+    Bracketed qualifiers, a trailing " - qualifier" and a "feat. X" clause
+    become version tags, so "Origins (Extended)" and "Repetition (feat. James
+    Yorkston)" stay distinct from "Origins" and "Repetition", while
+    "Flown - Remastered 2021" matches "Flown". Only the first artist counts,
+    because YouTube Music lists guest artists inconsistently between releases.
+    """
+    tags = []
+    for m in _QUALIFIER_RE.finditer(title):
+        tags.append(m.group(1) if m.group(1) is not None else m.group(2))
+    base = _QUALIFIER_RE.sub(" ", title)
+    base, dash, suffix = base.partition(" - ")
+    if dash:
+        tags.append(suffix)
+    feat = _FEAT_RE.search(base)
+    if feat:
+        tags.append(feat.group(0))
+        base = base[:feat.start()]
+    folded = sorted({t for t in map(_fold, tags) if t and not _IGNORED_QUALIFIER_RE.match(t)})
+    first_artist = re.split(r",| & ", artist, maxsplit=1)[0]
+    return f"{_fold(first_artist)}|{_fold(base)}|{','.join(folded)}"
+
+
+def label_key(label: str) -> str:
+    """track_key() of an "Artist - Title" label (split at the first " - ")."""
+    artist, _, title = label.partition(" - ")
+    return track_key(artist, title)
+
+
+def same_length(a: int | None, b: int | None) -> bool:
+    """True if two durations match, or either is unknown."""
+    return a is None or b is None or abs(a - b) <= SAME_LENGTH_TOLERANCE_S
+
+
+class UsedTracks:
+    """Tracks that must not be reused, matched by videoId or by recording.
+
+    match() returns ("same", entry) for the same videoId, or the same
+    track_key() at the same length; ("version", entry) for the same key at a
+    different length, which is worth a listen but may be a different cut;
+    or None. Entries added with any_version=True (banned tracks) also give
+    ("version", entry) for any other version of the title: a remix or edit
+    can be substantially different, so it's for the user to judge.
+    """
+
+    def __init__(self) -> None:
+        self.by_id: dict[str, dict[str, Any]] = {}
+        self.by_key: dict[str, list[dict[str, Any]]] = {}
+        self.by_base: dict[str, list[dict[str, Any]]] = {}
+
+    def add(self, video_id: str | None, artist: str, title: str,
+            duration_seconds: int | None = None, source: str | None = None,
+            any_version: bool = False) -> None:
+        entry = {"videoId": video_id, "label": f"{artist} - {title}",
+                 "duration_seconds": duration_seconds, "source": source}
+        if video_id:
+            self.by_id.setdefault(video_id, entry)
+        key = track_key(artist, title)
+        self.by_key.setdefault(key, []).append(entry)
+        if any_version:
+            self.by_base.setdefault(_base_key(key), []).append(entry)
+
+    def add_track(self, track: dict[str, Any], source: str | None = None) -> None:
+        """Add a ytmusicapi playlist track, or a resolve_track() result."""
+        if "artist" in track:
+            artist = track["artist"]
+        else:
+            artists = track.get("artists") or []
+            artist = artists[0]["name"] if artists else "Unknown"
+        self.add(track.get("videoId"), artist, track.get("title") or "",
+                 track.get("duration_seconds"), source)
+
+    def without(self, video_ids: set[str]) -> "UsedTracks":
+        """A copy minus every entry with one of these videoIds (for --sync,
+        where a playlist's own tracks aren't "used" by itself)."""
+        copy = UsedTracks()
+        for mine, theirs in ((self.by_key, copy.by_key), (self.by_base, copy.by_base)):
+            for key, entries in mine.items():
+                kept = [e for e in entries if e["videoId"] not in video_ids]
+                if kept:
+                    theirs[key] = kept
+        copy.by_id = {v: e for v, e in self.by_id.items() if v not in video_ids}
+        return copy
+
+    def match(self, video_id: str | None, artist: str, title: str,
+              duration_seconds: int | None = None) -> tuple[str, dict[str, Any]] | None:
+        if video_id and video_id in self.by_id:
+            return "same", self.by_id[video_id]
+        key = track_key(artist, title)
+        entries = self.by_key.get(key, [])
+        for entry in entries:
+            if same_length(entry["duration_seconds"], duration_seconds):
+                return "same", entry
+        entries = entries or self.by_base.get(_base_key(key), [])
+        return ("version", entries[0]) if entries else None
+
+
+def _base_key(key: str) -> str:
+    """A track_key() without its version tags."""
+    return key.rpartition("|")[0]
 
 
 # --- Exclude lists (per-consumer, directory passed in by caller) ---
@@ -77,9 +205,9 @@ def remove_from_exclude_list(exclude_dir: Path | str, playlist_ids: list[str]) -
     return entries
 
 
-def get_excluded_video_ids(client, exclude_dir: Path | str) -> set[str]:
-    """Union the videoIds of every playlist in the exclude-list, fetched live."""
-    excluded: set[str] = set()
+def get_excluded_playlist_tracks(client, exclude_dir: Path | str) -> UsedTracks:
+    """Every track in the exclude-list's playlists, fetched live."""
+    used = UsedTracks()
     for entry in load_exclude_list(exclude_dir):
         try:
             playlist = client.get_playlist(entry["id"], limit=None)
@@ -88,45 +216,48 @@ def get_excluded_video_ids(client, exclude_dir: Path | str) -> set[str]:
                   f"({entry.get('name', '?')}): {exc}")
             continue
         for track in playlist.get("tracks", []):
-            vid = track.get("videoId")
-            if vid:
-                excluded.add(vid)
-    return excluded
+            used.add_track(track, source=entry.get("name") or entry["id"])
+    return used
 
 
 # --- Permanent per-track exclusion list (tracks banned regardless of playlist) ---
 
-def load_exclude_tracks(exclude_dir: Path | str) -> list[dict[str, str]]:
+def load_exclude_tracks(exclude_dir: Path | str) -> list[dict[str, Any]]:
     f = _exclude_tracks_file(exclude_dir)
     if not f.exists():
         return []
     return json.loads(f.read_text())
 
 
-def save_exclude_tracks(exclude_dir: Path | str, entries: list[dict[str, str]]) -> None:
+def save_exclude_tracks(exclude_dir: Path | str, entries: list[dict[str, Any]]) -> None:
     Path(exclude_dir).mkdir(parents=True, exist_ok=True)
     _exclude_tracks_file(exclude_dir).write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n")
 
 
-def add_to_exclude_tracks(exclude_dir: Path | str, video_id: str, name: str) -> list[dict[str, str]]:
+def add_to_exclude_tracks(exclude_dir: Path | str, video_id: str, name: str,
+                          duration_seconds: int | None = None) -> list[dict[str, Any]]:
     entries = load_exclude_tracks(exclude_dir)
     if not any(e["videoId"] == video_id for e in entries):
-        entries.append({"videoId": video_id, "name": name})
+        entry: dict[str, Any] = {"videoId": video_id, "name": name}
+        if duration_seconds:
+            entry["duration_seconds"] = duration_seconds
+        entries.append(entry)
         save_exclude_tracks(exclude_dir, entries)
     return entries
 
 
-def get_excluded_track_video_ids(exclude_dir: Path | str) -> set[str]:
-    """videoIds from the permanent per-track exclude file. No network needed."""
-    return {e["videoId"] for e in load_exclude_tracks(exclude_dir) if e.get("videoId")}
-
-
-def get_all_excluded_video_ids(client, exclude_dir: Path | str) -> set[str]:
+def get_used_tracks(client, exclude_dir: Path | str) -> UsedTracks:
     """Union of (a) tracks in every excluded playlist and (b) the permanent
-    per-track exclude list. This is what playlist-building should check
-    against; get_excluded_video_ids() stays playlist-only for callers (like
-    --sync) that need to subtract out a specific playlist's own tracks."""
-    return get_excluded_video_ids(client, exclude_dir) | get_excluded_track_video_ids(exclude_dir)
+    per-track exclude list, matched by videoId or by recording (see
+    UsedTracks). This is what playlist-building should check against.
+    Exclude-track entries without a stored length match any length, and any
+    other version of a banned title is an advisory match."""
+    used = get_excluded_playlist_tracks(client, exclude_dir)
+    for e in load_exclude_tracks(exclude_dir):
+        artist, _, title = e.get("name", "").partition(" - ")
+        used.add(e.get("videoId"), artist, title, e.get("duration_seconds"), "track exclude-list",
+                 any_version=True)
+    return used
 
 
 # --- Instrumental/vocal detection (optional, policy-gated by the caller) ---
