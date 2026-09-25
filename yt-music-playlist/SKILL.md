@@ -1,6 +1,6 @@
 ---
 name: yt-music-playlist
-description: Generic engine for building and editing a YouTube Music playlist from curated "Artist - Title" track queries via ytmusicapi. Handles auth, track search/resolution, timeline validation, playlist create/show/sync, and optional vocal/lyrics filtering. Use this directly for a plain "make me a YouTube Music playlist" request, or as the shared foundation another skill invokes with its own `--protocol` config (segment timing, artist-diversity caps, vocal policy) for a more specific playlist format — see ketamine-infusion-playlist for an example consumer. Not for playing music or browsing an existing library — only for building/editing playlists.
+description: Generic engine for building and editing a YouTube Music playlist from curated "Artist - Title" track queries via ytmusicapi. Handles auth, track search/resolution, timeline validation, playlist create/show/sync, optional vocal/lyrics filtering, and optional audio-content analysis (energy, mood/style, voice presence, loudness/tempo/key transitions, sound-alike ranking). Use this directly for a plain "make me a YouTube Music playlist" request, or as the shared foundation another skill invokes with its own `--protocol` config (segment timing, artist-diversity caps, vocal policy) for a more specific playlist format — see ketamine-infusion-playlist for an example consumer. Not for playing music or browsing an existing library — only for building/editing playlists.
 ---
 
 Build a YouTube Music playlist from a curated list of "Artist - Title" queries, resolving each
@@ -14,11 +14,32 @@ exist yet, create it and install `requirements.txt` first (see
 `references/ytmusicapi-guide.md`). Auth and the lyrics cache are shared across every consumer
 of this skill.
 
+## Optional audio analysis
+
+When the request depends on how tracks actually *sound*, use `scripts/analyze_tracks.py`. That
+covers energy or mood, "tracks like X", smooth transitions, and no vocals of any kind (not just
+no lyrics). It downloads each track's audio, analyzes it, caches the features by videoId and
+deletes the audio.
+
+It needs `requirements-audio.txt` installed in the venv. Skip it for plain metadata-driven
+requests: uncached tracks cost ~15-30s each.
+
+- `analyze_tracks.py "Artist - Title" ...` prints a compact per-track table: voice%, arousal,
+  relaxed, loudness, start>end level, bpm, Camelot key, top styles.
+- `--similar-to "Artist - Title" CANDIDATES...` ranks candidates by how alike they sound.
+- `--plan plan.json --transitions` reports loudness, energy, tempo and key changes at each join.
+- The voice score is unreliable (texture reads as voice). After the user listens to a flagged
+  track, record their verdict with `--mark-voice salient|ok TRACK...`; it overrides the score
+  in every later dry-run.
+
+A protocol can also enforce this in the dry-run via `audio_policy` (advisory warnings only).
+See `references/audio-analysis.md` for features, caveats and the schema.
+
 ## Optional protocol config
 
 A specific playlist format (fixed segment timing, artist-diversity caps, an instrumental-only
 rule, etc.) is expressed as a `--protocol PATH` JSON config, not code — see
-`references/ytmusicapi-guide.md` for the full schema. Without `--protocol`, this skill builds
+`references/protocol-config.md` for the full schema. Without `--protocol`, this skill builds
 an unconstrained flat playlist: any phase names, no timing/diversity checks, vocal detection
 off. A consuming skill (e.g. ketamine-infusion-playlist) supplies its own protocol file and
 invokes this skill's `build_playlist.py` with it.
@@ -34,7 +55,8 @@ invokes this skill's `build_playlist.py` with it.
    ambiguous (edits/remixes/features share a title) or you want to sanity-check a track before
    committing it, audition candidates with `scripts/search_tracks.py -n 5 "Artist - Title"`
    rather than guessing from the top search hit. Write the plan to a JSON file, e.g.
-   `/tmp/plan.json`:
+   `/tmp/plan.json`. If the request involves how tracks sound, check candidates with
+   `scripts/analyze_tracks.py` (above) before committing them to the plan:
 
    ```json
    {
@@ -55,7 +77,8 @@ invokes this skill's `build_playlist.py` with it.
    (timing, diversity, vocals), then prints a full timeline with cumulative start times. Nothing
    is created yet. If a protocol's vocal policy is active, pass `--no-lyrics-check` for a faster
    timing-only iteration pass (the title heuristic still runs; network lyrics lookups are
-   cached across runs).
+   cached across runs). If the protocol has an `audio_policy`, the timeline also shows audio
+   columns and advisory energy, transition and voice warnings; `--no-audio-check` skips them.
 
 4. **Iterate.** If there are blocking issues (not-found, a protocol violation) or the timeline
    doesn't look right, revise the plan file and re-run step 3. Show the user the timeline before
@@ -87,7 +110,7 @@ state — `exclude-playlists.json` (prior playlists whose tracks should never be
 `exclude-tracks.json` (individually banned tracks). Either pass it as `--exclude-dir DIR` to
 every command in the workflow above (steps 3, 5, 7), or — for a consuming skill that always
 wants this on — bake it into that skill's `--protocol` config as `"exclude_dir"` so it never has
-to pass `--exclude-dir` itself (see `references/ytmusicapi-guide.md`); `--exclude-dir` on the
+to pass `--exclude-dir` itself (see `references/exclude-lists.md`); `--exclude-dir` on the
 command line overrides a protocol's value if both are given. With an exclude-dir in effect,
 from either source:
 
@@ -107,5 +130,9 @@ from either source:
   that records the playlist in the exclude-list so its tracks aren't reused in a future
   playlist. Do not finalize on the user's behalf just because a create or sync succeeded.
 
-For full ytmusicapi call details (auth setup, search/playlist API shapes, gotchas) and the
-`--protocol` config schema, see `references/ytmusicapi-guide.md`.
+References (read only the one the task needs):
+- `references/ytmusicapi-guide.md`: install, auth, API call shapes and gotchas, unavailable tracks.
+- `references/protocol-config.md`: the `--protocol` config schema.
+- `references/exclude-lists.md`: no-reuse tracking with `--exclude-dir`.
+- `references/vocal-detection.md`: how the lyrics and title checks work, and their limits.
+- `references/audio-analysis.md`: audio features, install, cost and the `audio_policy` keys.
