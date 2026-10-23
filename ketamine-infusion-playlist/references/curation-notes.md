@@ -49,13 +49,16 @@ as measured on 2026-09-24:
 
 ## Candidate pools
 
-These two playlists are **not sessions**. They're the user's collections of tracks that might
+These playlists are **not sessions**. They're the user's collections of tracks that might
 fit a ketamine playlist:
 
 - **"other songs for ketamine"** (`PL9yl9AZo1F721DgtKrS0ipAJ5uqHqsS6A`)
 - **"Water songs for ketamine"** (`PL9yl9AZo1F72_DaRagJLDql5zJmkXm2sA`)
+- **"zoe keating available on YT music"** (`PLdxsbzDxfRdw`): Zoë Keating's catalog as it
+  exists on YouTube Music. Her best-known album, *Into the Trees*, isn't there, and plain
+  searches for its titles resolve to the wrong tracks; pick her tracks from this pool.
 
-Draw candidates from them first. Their tracks are in the audio cache, so
+Draw candidates from them first. Their tracks are mostly in the audio cache, so
 `analyze_tracks.py --playlist ID` profiles a whole pool instantly, and
 `--similar-to "<reference track>" ...` narrows a pool to what fits a phase. They must never
 be in the playlist exclude-list: that would ban exactly the tracks the user set aside to use.
