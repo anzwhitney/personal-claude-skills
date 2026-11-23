@@ -76,7 +76,8 @@ check off):
     `analyze_tracks.py --mark-voice salient|ok|clear TRACK...`. `salient` flags the track
     whatever its score; `ok` means no voice, or only unobtrusive background, and silences the
     flag. Verdicts live in `~/.local/share/yt-music-playlist/voice-verdicts.json`, keyed by
-    videoId, so a different upload of the same song needs its own.
+    videoId. A track without its own verdict inherits one from another upload of the same
+    recording (same `ytm.track_key()` and length; see `exclude-lists.md`).
   - No threshold separates real voice from texture. In testing, Kerala (40%) scored below
     four fully instrumental tracks (51–82%). Background voices that are fine for a session
     scored 25–35%. 0.35 only cuts down the flags you have to check.

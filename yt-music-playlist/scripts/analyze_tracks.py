@@ -31,7 +31,9 @@ Usage:
     python3 analyze_tracks.py --mark-voice ok "Yosi Horikawa - Tono"   # after listening
 
 Positional arguments are "Artist - Title" queries, or bare 11-character
-videoIds. With --plan, tracks are taken from the plan in order (phase
+videoIds. argparse reads a videoId that starts with "-" as an option, so put
+such ids after "--" (`analyze_tracks.py -- -9Fa_E9T8nk`), or attach them to
+their option with "=" (`--similar-to=-9Fa_E9T8nk`). With --plan, tracks are taken from the plan in order (phase
 headings included); --transitions then also reports each adjacent pair.
 """
 from __future__ import annotations
@@ -70,6 +72,13 @@ def resolve_items(client, queries: list[str]) -> list[dict]:
             continue
         items.append({"videoId": track["videoId"], "label": f"{track['artist']} - {track['title']}"})
     return items
+
+
+def item_verdict(item: dict) -> str | None:
+    """voice_verdict() for an analyzed item, falling back to another upload of
+    the same recording when the item has a real "Artist - Title" label."""
+    label = item["label"] if item["label"] != item["videoId"] else None
+    return voice_verdict(item["videoId"], label, (item.get("features") or {}).get("duration"))
 
 
 def plan_items(client, plan_path: str) -> list[dict]:
@@ -169,7 +178,7 @@ def main() -> int:
                 pairs.append({"from": a["label"], "to": b["label"], **transition(a["features"], b["features"])})
 
     if args.json:
-        out = {"tracks": [{**i, "voice_verdict": voice_verdict(i["videoId"])} for i in items]}
+        out = {"tracks": [{**i, "voice_verdict": item_verdict(i)} for i in items]}
         if ref:
             out["reference"] = ref
         if args.transitions:
@@ -185,7 +194,7 @@ def main() -> int:
                 print(f"--- {phase} ---")
             sim = f"sim{item['similarity']:5.2f} " if item.get("similarity") is not None else ("sim   ?  " if ref else "")
             err = f"  [{item['error']}]" if item["error"] else ""
-            verdict = voice_verdict(item["videoId"])
+            verdict = item_verdict(item)
             heard = f"  [you: voice {verdict}]" if verdict else ""
             print(f"{sim}{summary_columns(item['features'])}  {item['label']}{heard}{err}")
         if pairs:
